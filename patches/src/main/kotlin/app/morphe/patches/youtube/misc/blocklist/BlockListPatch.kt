@@ -17,7 +17,7 @@ private const val PREFERENCE_CLASS = "app.morphe.extension.youtube.settings.pref
 
 @Suppress("unused")
 val blockListPatch = bytecodePatch(
-    name = "Block channels",
+    name = "69-Block channels",
     description = "Adds \"Block channel\" and \"Block channel livestreams\" to the video flyout menu, " +
         "hides them from the feed, syncs the list with a multitool-sync.json file " +
         "(Multitool Firefox add-on) and can use MiXplorer as file picker."

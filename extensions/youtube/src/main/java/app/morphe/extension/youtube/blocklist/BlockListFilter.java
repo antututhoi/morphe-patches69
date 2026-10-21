@@ -4,6 +4,7 @@
 package app.morphe.extension.youtube.blocklist;
 
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.Locale;
 
 import app.morphe.extension.shared.Utils;
@@ -19,6 +20,29 @@ public final class BlockListFilter extends Filter {
 
     private final ByteArrayFilterGroup liveBuffer = new ByteArrayFilterGroup(
             null, "yt_outline_live_black", "yt_outline_experimental_live_black");
+
+    private String cachedKeywords = null;
+    private Pattern cachedPattern = null;
+
+    /** Word match on the item's accessibility text: live now, upcoming/scheduled, or ended streams ("Streamed 3 days ago"). */
+    private boolean looksLikeLivestream(String accessibility) {
+        if (accessibility == null || accessibility.isEmpty()) return false;
+        String kw = app.morphe.extension.youtube.settings.Settings.BLOCK_LIVE_KEYWORDS.get();
+        if (!kw.equals(cachedKeywords)) {
+            StringBuilder sb = new StringBuilder();
+            for (String k : kw.split(",")) {
+                k = k.trim();
+                if (k.isEmpty()) continue;
+                if (sb.length() > 0) sb.append('|');
+                sb.append(Pattern.quote(k));
+            }
+            cachedPattern = sb.length() == 0 ? null
+                    : Pattern.compile("(?<![\\p{L}\\p{N}])(" + sb + ")(?![\\p{L}\\p{N}])",
+                    Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+            cachedKeywords = kw;
+        }
+        return cachedPattern != null && cachedPattern.matcher(accessibility).find();
+    }
 
     public BlockListFilter() {
         // Filters are created at app start: apply picker setting and pull the shared list.
@@ -49,7 +73,8 @@ public final class BlockListFilter extends Filter {
         if (!channels.isEmpty() && matches(channels, accessibility, buffer)) return true;
 
         List<BlockList.Target> live = BlockList.getLive();
-        return !live.isEmpty() && liveBuffer.check(buffer).isFiltered() && matches(live, accessibility, buffer);
+        return !live.isEmpty() && (liveBuffer.check(buffer).isFiltered() || looksLikeLivestream(accessibility))
+                && matches(live, accessibility, buffer);
     }
 
     private static boolean matches(List<BlockList.Target> targets, String accessibility, byte[] buffer) {

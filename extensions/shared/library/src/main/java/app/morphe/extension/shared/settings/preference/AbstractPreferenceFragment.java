@@ -275,6 +275,8 @@ public abstract class AbstractPreferenceFragment extends PreferenceFragment {
     private static final int WRITE_TEXT_REQUEST_CODE = 45;
     private static final int READ_TEXT_REQUEST_CODE = 46;
     private static final int PICK_SYNC_FILE_REQUEST_CODE = 47;
+    private static final int PICK_FOLDER_REQUEST_CODE = 48;
+    private Consumer<Uri> pendingFolderResult = null;
     private Consumer<Uri> pendingSyncFileResult = null;
 
     private String existingSettings = "";
@@ -755,6 +757,19 @@ public abstract class AbstractPreferenceFragment extends PreferenceFragment {
         }
     }
 
+    /** Lets the user pick a folder (MiXplorer when enabled). Access is persisted. */
+    public void pickFolderActivity(Consumer<Uri> onResult) {
+        try {
+            pendingFolderResult = onResult;
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+            MiXplorerPicker.start(getActivity(), this, intent, PICK_FOLDER_REQUEST_CODE);
+        } catch (Exception ex) {
+            Logger.printException(() -> "pickFolderActivity failure", ex);
+        }
+    }
+
     private void saveTextToUri(Uri uri) {
         if (pendingTextExportResult == null) return;
 
@@ -1002,6 +1017,17 @@ public abstract class AbstractPreferenceFragment extends PreferenceFragment {
             saveTextToUri(data.getData());
         } else if (requestCode == READ_TEXT_REQUEST_CODE && resultCode == Activity.RESULT_OK && data != null) {
             readTextFromUri(data.getData());
+        } else if (requestCode == PICK_FOLDER_REQUEST_CODE && resultCode == Activity.RESULT_OK
+                && data != null && data.getData() != null && pendingFolderResult != null) {
+            Uri uri = data.getData();
+            try {
+                getContext().getContentResolver().takePersistableUriPermission(uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            } catch (Exception ex) {
+                Logger.printInfo(() -> "Persistable permission not available", ex);
+            }
+            pendingFolderResult.accept(uri);
+            pendingFolderResult = null;
         } else if (requestCode == PICK_SYNC_FILE_REQUEST_CODE && resultCode == Activity.RESULT_OK
                 && data != null && data.getData() != null && pendingSyncFileResult != null) {
             Uri uri = data.getData();

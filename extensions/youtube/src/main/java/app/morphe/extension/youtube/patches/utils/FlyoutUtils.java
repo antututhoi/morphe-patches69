@@ -64,6 +64,7 @@ import app.morphe.extension.youtube.shared.ShortsPlayerState;
 import app.morphe.extension.youtube.videoplayer.PictureinPictureButton;
 import app.morphe.extension.youtube.videoplayer.SaveToWatchLaterButton;
 import app.morphe.extension.youtube.blocklist.BlockList;
+import app.morphe.extension.youtube.download.ThumbnailDownloader;
 import app.morphe.extension.youtube.whitelist.ChannelWhitelist;
 
 @SuppressWarnings("unused")
@@ -555,6 +556,7 @@ public final class FlyoutUtils {
 
             nextButtonIndex = ChannelWhitelist.addFlyoutButtons(flyoutPanel, nextButtonIndex, isMyTabHistoryFlyout);
             nextButtonIndex = BlockList.addFlyoutButtons(flyoutPanel, nextButtonIndex, isMyTabHistoryFlyout);
+            nextButtonIndex = ThumbnailDownloader.addFlyoutButtons(flyoutPanel, nextButtonIndex, isMyTabHistoryFlyout);
         }
 
         // Check the patch first. Loading the button classes runs their static
