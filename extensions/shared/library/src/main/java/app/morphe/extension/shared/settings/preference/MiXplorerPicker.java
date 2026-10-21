@@ -1,15 +1,16 @@
 /*
- * Optional MiXplorer file picker in place of the Android system picker (SAF).
- * MiXplorer answers the standard ACTION_OPEN_DOCUMENT / ACTION_CREATE_DOCUMENT / ACTION_GET_CONTENT
- * intents, so the only change is addressing the intent to its package.
- * If MiXplorer is not installed or refuses the intent the system picker is used.
+ * Optional MiXplorer file/folder picker in place of the Android system picker (SAF).
+ * MiXplorer answers the standard ACTION_OPEN_DOCUMENT / ACTION_CREATE_DOCUMENT / ACTION_OPEN_DOCUMENT_TREE
+ * intents, so the intent is only addressed to its package.
+ * Android 11+ hides other apps from getPackageInfo/resolveActivity unless declared in the manifest,
+ * so installation is NOT checked: the intent is just started and the system picker is used
+ * if MiXplorer is missing or refuses it.
  */
 package app.morphe.extension.shared.settings.preference;
 
 import android.app.Activity;
-import android.content.Context;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 
 import app.morphe.extension.shared.Logger;
 
@@ -22,42 +23,23 @@ public final class MiXplorerPicker {
 
     private MiXplorerPicker() {}
 
-    public static String installedPackage(Context context) {
-        PackageManager pm = context.getPackageManager();
-        for (String p : PACKAGES) {
-            try {
-                pm.getPackageInfo(p, 0);
-                return p;
-            } catch (PackageManager.NameNotFoundException ignored) {
-            }
-        }
-        return null;
-    }
-
-    /** Addresses the intent to MiXplorer when enabled and installed and it can handle the intent. */
-    public static Intent prefer(Context context, Intent intent) {
-        if (!enabled) return intent;
-        try {
-            String pkg = installedPackage(context);
-            if (pkg == null) return intent;
-            Intent copy = new Intent(intent);
-            copy.setPackage(pkg);
-            if (copy.resolveActivity(context.getPackageManager()) != null) return copy;
-        } catch (Exception ex) {
-            Logger.printInfo(() -> "MiXplorer unavailable, using system picker", ex);
-        }
-        return intent;
-    }
-
-    /** Starts the picker. If MiXplorer fails to start the system picker is used. */
+    /** Starts the picker. Tries MiXplorer first when enabled, otherwise/else the system picker. */
     public static void start(Activity activity, android.app.Fragment fragment, Intent intent, int requestCode) {
-        Intent preferred = prefer(activity, intent);
-        try {
-            fragment.startActivityForResult(preferred, requestCode);
-        } catch (Exception ex) {
-            if (preferred == intent) throw ex;
-            Logger.printInfo(() -> "MiXplorer start failed, using system picker", ex);
-            fragment.startActivityForResult(intent, requestCode);
+        if (enabled) {
+            for (String pkg : PACKAGES) {
+                try {
+                    Intent copy = new Intent(intent);
+                    copy.setPackage(pkg);
+                    fragment.startActivityForResult(copy, requestCode);
+                    return;
+                } catch (ActivityNotFoundException | SecurityException ex) {
+                    Logger.printInfo(() -> pkg + " cannot handle " + intent.getAction() + ": " + ex.getMessage());
+                } catch (Exception ex) {
+                    Logger.printInfo(() -> pkg + " start failed", ex);
+                }
+            }
+            app.morphe.extension.shared.Utils.showToastShort("MiXplorer could not open. Using the system picker.");
         }
+        fragment.startActivityForResult(intent, requestCode);
     }
 }

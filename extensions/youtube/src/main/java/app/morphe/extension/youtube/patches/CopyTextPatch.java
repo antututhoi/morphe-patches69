@@ -9,7 +9,11 @@ package app.morphe.extension.youtube.patches;
 
 import static app.morphe.extension.shared.StringRef.str;
 
+import android.app.Activity;
+import android.app.AlertDialog;
 import android.view.MotionEvent;
+import android.widget.ScrollView;
+import android.widget.TextView;
 import android.view.View;
 import android.view.ViewParent;
 
@@ -85,10 +89,45 @@ public final class CopyTextPatch {
             return false;
         }
 
+        if (Settings.SELECT_TEXT_DIALOG.get() && showSelectableText(text)) {
+            return true;
+        }
+
         Utils.setClipboard(text);
         Utils.showToastShort(str(touchedToastKey));
         return true;
     };
+
+    /**
+     * Shows the text in a dialog where it can be selected by dragging, and copied.
+     * @return If the dialog was shown.
+     */
+    private static boolean showSelectableText(String text) {
+        try {
+            Activity activity = Utils.getActivity();
+            if (activity == null) return false;
+            TextView tv = new TextView(activity);
+            tv.setText(text);
+            tv.setTextIsSelectable(true);
+            tv.setTextSize(16);
+            int pad = (int) (16 * activity.getResources().getDisplayMetrics().density);
+            tv.setPadding(pad, pad, pad, pad);
+            ScrollView scroll = new ScrollView(activity);
+            scroll.addView(tv);
+            new AlertDialog.Builder(activity)
+                    .setView(scroll)
+                    .setPositiveButton("Copy all", (d, w) -> {
+                        Utils.setClipboard(text);
+                        Utils.showToastShort("Copied");
+                    })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show();
+            return true;
+        } catch (Exception ex) {
+            Logger.printException(() -> "showSelectableText failure", ex);
+            return false;
+        }
+    }
 
     /**
      * Injection point.
@@ -106,6 +145,13 @@ public final class CopyTextPatch {
                         commentTexts.put(comment, Boolean.TRUE);
                     }
                 }
+            } else if (COPY_COMMENTS && isDescriptionText(contextInterface)) {
+                String description = text.toString().trim();
+                if (description.length() >= 20) {
+                    synchronized (commentTexts) {
+                        commentTexts.put(description, Boolean.TRUE);
+                    }
+                }
             } else if (COPY_VIDEO_TITLE && isVideoTitle(contextInterface)) {
                 shownTitle = removeTitleMarker(text.toString().trim());
             }
@@ -113,6 +159,14 @@ public final class CopyTextPatch {
             Logger.printException(() -> "onLithoTextLoaded failure", ex);
         }
         return text;
+    }
+
+    /** Best effort: text of the video description panel. */
+    private static boolean isDescriptionText(ContextInterface contextInterface) {
+        String identifier = contextInterface.patch_getIdentifier();
+        if (identifier == null) return false;
+        if (!(identifier.startsWith("expandable_metadata.e") || identifier.contains("description"))) return false;
+        return Utils.endsWith(contextInterface.patch_getPathBuilder(), "|TextType|");
     }
 
     private static boolean isVideoTitle(ContextInterface contextInterface) {

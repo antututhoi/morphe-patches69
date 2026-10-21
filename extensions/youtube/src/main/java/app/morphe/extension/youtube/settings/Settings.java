@@ -175,9 +175,16 @@ public class Settings extends SharedYouTubeSettings {
     public static final BooleanSetting BLOCK_LIST_FLYOUT_MENU = new BooleanSetting("morphe_block_list_flyout_menu", TRUE);
     public static final StringSetting BLOCK_LIST_SYNC_URI = new StringSetting("morphe_block_list_sync_uri", "", false);
     public static final BooleanSetting DOWNLOAD_THUMBNAILS_FLYOUT = new BooleanSetting("morphe_download_thumbnails_flyout", TRUE);
-    public static final StringSetting BLOCK_LIVE_KEYWORDS = new StringSetting("morphe_block_live_keywords", "live, streamed, streaming, upcoming, scheduled, waiting, watching", false);
+    public static final StringSetting BLOCK_LIVE_KEYWORDS = new StringSetting("morphe_block_live_keywords", "Streamed\nStreaming\nUpcoming\nScheduled", false);
     public static final BooleanSetting KEEP_FEED_POSITION = new BooleanSetting("morphe_keep_feed_position", TRUE);
     public static final StringSetting DOWNLOAD_FOLDER_URI = new StringSetting("morphe_download_folder_uri", "", false);
+    public static final BooleanSetting FEED_LONG_PRESS_MENU = new BooleanSetting("morphe_feed_long_press_menu", TRUE);
+    public static final BooleanSetting FEED_SWIPE_GESTURES = new BooleanSetting("morphe_feed_swipe_gestures", TRUE);
+    public static final StringSetting HIDDEN_VIDEO_TITLES = new StringSetting("morphe_hidden_video_titles", "", false);
+    public static final BooleanSetting BLOCK_CHANNEL_POSTS = new BooleanSetting("morphe_block_channel_posts", TRUE);
+    public static final BooleanSetting SHORTS_SKIP_AFTER_BLOCK = new BooleanSetting("morphe_shorts_skip_after_block", TRUE);
+    public static final BooleanSetting DOWNLOAD_POST_IMAGES_FLYOUT = new BooleanSetting("morphe_download_post_images_flyout", TRUE);
+    public static final BooleanSetting FULLSCREEN_PROGRESS_BAR = new BooleanSetting("morphe_fullscreen_progress_bar", TRUE, true);
     public static final BooleanSetting USE_MIXPLORER_PICKER = new BooleanSetting("morphe_use_mixplorer_picker", FALSE);
     public static final BooleanSetting DISABLE_AUTO_FEED_REFRESH = new BooleanSetting("morphe_disable_auto_feed_refresh", FALSE);
 
@@ -332,6 +339,7 @@ public class Settings extends SharedYouTubeSettings {
     public static final BooleanSetting OPEN_CHANNEL_OF_LIVE_AVATAR = new BooleanSetting("morphe_open_channel_of_live_avatar", FALSE);
     public static final BooleanSetting CHANNEL_SEARCH = new BooleanSetting("morphe_channel_search", TRUE);
     public static final BooleanSetting COPY_VIDEO_TITLE = new BooleanSetting("morphe_copy_video_title", TRUE);
+    public static final BooleanSetting SELECT_TEXT_DIALOG = new BooleanSetting("morphe_select_text_dialog", TRUE);
     public static final BooleanSetting COPY_COMMENTS = new BooleanSetting("morphe_copy_comments", TRUE);
     public static final BooleanSetting VIDEO_QUALITY_DIALOG_BUTTON = new BooleanSetting("morphe_video_quality_dialog_button", FALSE, true);
     public static final BooleanSetting VIDEO_QUALITY_DIALOG_BUTTON_RESOLUTION = new BooleanSetting("morphe_video_quality_dialog_button_resolution", FALSE, parent(VIDEO_QUALITY_DIALOG_BUTTON));

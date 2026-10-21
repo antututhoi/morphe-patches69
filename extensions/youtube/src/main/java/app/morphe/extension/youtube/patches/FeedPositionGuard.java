@@ -1,8 +1,9 @@
 /*
  * Keeps the feed where it was when YouTube is left (other app, screen off, picture-in-picture)
  * and opened again. YouTube reloads the home feed and it jumps to the top. This remembers the
- * scroll offset while the feed is visible and puts it back if the feed was found at the top
- * shortly after returning. Works only with View APIs, so it needs no obfuscated names.
+ * scroll offset while the feed is visible and puts it back if the feed is found at the top
+ * after returning. When coming back from picture-in-picture the video covers the feed, so the
+ * check waits until the video is minimized or closed. Uses only View APIs (no obfuscated names).
  */
 package app.morphe.extension.youtube.patches;
 
@@ -19,6 +20,8 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.lang.ref.WeakReference;
+
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.youtube.settings.Settings;
 import app.morphe.extension.youtube.shared.PlayerType;
@@ -29,13 +32,18 @@ public final class FeedPositionGuard {
     private static final long SAMPLE_INTERVAL_MS = 500;
     private static final long RESTORE_POLL_MS = 120;
     private static final long RESTORE_WINDOW_MS = 6000;
+    private static final long MAX_WAIT_BEHIND_PLAYER_MS = 30 * 60 * 1000;
     private static final int MIN_OFFSET_TO_RESTORE = 400;
 
     private static final Handler handler = new Handler(Looper.getMainLooper());
     private static boolean registered;
+    private static WeakReference<Activity> activityRef = new WeakReference<>(null);
+
     private static int savedOffset;          // vertical scroll offset in px of the feed
     private static boolean resumed;
-    private static long restoreEndsAt;
+    private static boolean armed;            // a restore check is pending
+    private static long armedAt;
+    private static long restoreEndsAt;       // 0 while waiting for the feed to become visible
     private static int expectedOffset = -1;
     private static boolean restoredOnce;
 
@@ -46,6 +54,7 @@ public final class FeedPositionGuard {
     /** Injection point. Called when the main activity is created. */
     public static void initialize(Activity activity) {
         try {
+            activityRef = new WeakReference<>(activity);
             if (!isPatchIncluded() || registered) return;
             registered = true;
             activity.getApplication().registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
@@ -56,6 +65,11 @@ public final class FeedPositionGuard {
                 public void onActivityStopped(@NonNull Activity a) {}
                 public void onActivitySaveInstanceState(@NonNull Activity a, @NonNull Bundle b) {}
                 public void onActivityDestroyed(@NonNull Activity a) {}
+            });
+            // Back from picture-in-picture: the feed shows again when the video is minimized/closed.
+            PlayerType.getOnChange().addObserver(type -> {
+                handler.post(FeedPositionGuard::onPlayerTypeChange);
+                return kotlin.Unit.INSTANCE;
             });
         } catch (Exception ex) {
             Logger.printException(() -> "initialize failure", ex);
@@ -77,7 +91,7 @@ public final class FeedPositionGuard {
         try {
             resumed = false;
             handler.removeCallbacksAndMessages(null);
-            if (enabled() && feedVisible()) sample(activity);
+            if (enabled() && feedVisible() && !armed) sample(activity);
         } catch (Exception ex) {
             Logger.printException(() -> "onPause failure", ex);
         }
@@ -85,13 +99,12 @@ public final class FeedPositionGuard {
 
     private static void onResume(Activity activity) {
         try {
+            activityRef = new WeakReference<>(activity);
             resumed = true;
             handler.removeCallbacksAndMessages(null);
             if (!enabled()) return;
             if (savedOffset >= MIN_OFFSET_TO_RESTORE) {
-                restoreEndsAt = System.currentTimeMillis() + RESTORE_WINDOW_MS;
-                expectedOffset = -1;
-                restoredOnce = false;
+                arm();
                 handler.postDelayed(() -> restoreStep(activity), RESTORE_POLL_MS);
             } else {
                 scheduleSample(activity);
@@ -101,10 +114,27 @@ public final class FeedPositionGuard {
         }
     }
 
+    private static void arm() {
+        armed = true;
+        armedAt = System.currentTimeMillis();
+        restoreEndsAt = 0;
+        expectedOffset = -1;
+        restoredOnce = false;
+    }
+
+    private static void onPlayerTypeChange() {
+        Activity activity = activityRef.get();
+        if (activity == null || !resumed || !enabled() || !armed || !feedVisible()) return;
+        // The feed just became visible again: start the check window now.
+        handler.removeCallbacksAndMessages(null);
+        restoreEndsAt = 0;
+        handler.postDelayed(() -> restoreStep(activity), RESTORE_POLL_MS);
+    }
+
     private static void scheduleSample(Activity activity) {
         handler.postDelayed(() -> {
             if (!resumed) return;
-            if (enabled() && feedVisible()) sample(activity);
+            if (enabled() && feedVisible() && !armed) sample(activity);
             scheduleSample(activity);
         }, SAMPLE_INTERVAL_MS);
     }
@@ -112,20 +142,27 @@ public final class FeedPositionGuard {
     private static void sample(Activity activity) {
         RecyclerView rv = findFeed(activity);
         if (rv == null) return;
-        // Only a feed that can scroll up, or that sits at the very top, is a valid reading.
         savedOffset = rv.canScrollVertically(-1) ? Math.max(rv.computeVerticalScrollOffset(), 1) : 0;
     }
 
     private static void restoreStep(Activity activity) {
-        if (!resumed || !enabled()) return;
+        if (!resumed || !enabled() || !armed) return;
         try {
             long now = System.currentTimeMillis();
+            if (!feedVisible()) {
+                // Video is maximized (e.g. back from picture-in-picture). Wait; the player type
+                // observer restarts the check when the feed is visible again.
+                if (now - armedAt > MAX_WAIT_BEHIND_PLAYER_MS) finish(activity);
+                return;
+            }
+            if (restoreEndsAt == 0) restoreEndsAt = now + RESTORE_WINDOW_MS;
+
             RecyclerView rv = findFeed(activity);
             if (rv != null) {
                 int current = rv.canScrollVertically(-1) ? rv.computeVerticalScrollOffset() : 0;
                 if (expectedOffset >= 0 && Math.abs(current - expectedOffset) > 250) {
                     Logger.printDebug(() -> "User scrolled, restore cancelled");
-                    resumeSampling(activity);
+                    finish(activity);
                     return;
                 }
                 int delta = savedOffset - current;
@@ -134,33 +171,34 @@ public final class FeedPositionGuard {
                     rv.scrollBy(0, delta);
                     expectedOffset = rv.computeVerticalScrollOffset();
                     restoredOnce = true;
-                    restoreEndsAt = Math.max(restoreEndsAt, now + 1500); // keep watching a moment more
-                } else if (current >= MIN_OFFSET_TO_RESTORE && restoredOnce) {
-                    // Check again whether YouTube pushes it back to the top.
-                    expectedOffset = current;
+                    restoreEndsAt = Math.max(restoreEndsAt, now + 1500);
                 } else if (current >= MIN_OFFSET_TO_RESTORE) {
-                    resumeSampling(activity); // never jumped
-                    return;
+                    expectedOffset = current;
+                    if (!restoredOnce && now > restoreEndsAt - RESTORE_WINDOW_MS + 2500) {
+                        finish(activity); // stayed in place for a while: never jumped
+                        return;
+                    }
                 }
             }
             if (now < restoreEndsAt) {
                 handler.postDelayed(() -> restoreStep(activity), RESTORE_POLL_MS);
             } else {
-                resumeSampling(activity);
+                finish(activity);
             }
         } catch (Exception ex) {
             Logger.printException(() -> "restoreStep failure", ex);
         }
     }
 
-    private static void resumeSampling(Activity activity) {
+    private static void finish(Activity activity) {
+        armed = false;
         expectedOffset = -1;
         scheduleSample(activity);
     }
 
     /** The largest visible vertically scrolling RecyclerView that fills a good part of the screen. */
     @Nullable
-    private static RecyclerView findFeed(Activity activity) {
+    public static RecyclerView findFeed(Activity activity) {
         View root = activity.getWindow().getDecorView();
         int screenHeight = root.getHeight();
         RecyclerView[] best = new RecyclerView[1];

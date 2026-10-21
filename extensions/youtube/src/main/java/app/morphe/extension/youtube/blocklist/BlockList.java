@@ -141,6 +141,36 @@ public final class BlockList {
         return false;
     }
 
+    // ---------------- hidden single videos (swipe left) ----------------
+
+    private static final int MAX_HIDDEN_TITLES = 500;
+    private static String cachedHiddenRaw;
+    private static List<byte[]> cachedHiddenBytes = new ArrayList<>();
+
+    public static synchronized void hideVideoTitle(String title) {
+        String raw = Settings.HIDDEN_VIDEO_TITLES.get();
+        List<String> lines = new ArrayList<>(java.util.Arrays.asList(raw.isEmpty() ? new String[0] : raw.split("\n")));
+        String clean = title.replace('\n', ' ').trim();
+        if (clean.length() < 4 || lines.contains(clean)) return;
+        lines.add(clean);
+        while (lines.size() > MAX_HIDDEN_TITLES) lines.remove(0);
+        Settings.HIDDEN_VIDEO_TITLES.save(android.text.TextUtils.join("\n", lines));
+    }
+
+    /** UTF-8 bytes of the titles hidden by swiping. */
+    public static synchronized List<byte[]> getHiddenTitleBytes() {
+        String raw = Settings.HIDDEN_VIDEO_TITLES.get();
+        if (!raw.equals(cachedHiddenRaw)) {
+            List<byte[]> out = new ArrayList<>();
+            for (String line : raw.split("\n")) {
+                if (line.trim().length() >= 4) out.add(line.trim().getBytes(StandardCharsets.UTF_8));
+            }
+            cachedHiddenBytes = out;
+            cachedHiddenRaw = raw;
+        }
+        return cachedHiddenBytes;
+    }
+
     // ---------------- 3-dot menu ----------------
 
     public static int addFlyoutButtons(Object flyoutPanel, int nextButtonIndex, boolean isMyTabHistoryFlyout) {
@@ -173,10 +203,33 @@ public final class BlockList {
             } else {
                 add(list, name, cid);
                 Utils.showToastShort(str("morphe_block_list_added"));
+                afterBlock(list, name);
             }
             BlockListFileSync.syncSoon();
             FlyoutUtils.dismissFlyout();
         }, index);
+    }
+
+    private static void afterBlock(String list, String name) {
+        try {
+            if (app.morphe.extension.youtube.shared.ShortsPlayerState.isOpen()) {
+                if (Settings.SHORTS_SKIP_AFTER_BLOCK.get()) {
+                    Utils.runOnMainThreadDelayed(app.morphe.extension.youtube.gestures.ShortsSkip::next, 400);
+                }
+                return;
+            }
+            boolean live = list.equals(BlockListSync.LIVE);
+            List<String> words = new ArrayList<>();
+            for (String w : Settings.BLOCK_LIVE_KEYWORDS.get().split("[\\r\\n,]+")) {
+                w = w.trim().replace("\"", "");
+                if (!w.isEmpty()) words.add(w);
+            }
+            // The 3-dot menu is still closing; hide when the feed is touchable again.
+            Utils.runOnMainThreadDelayed(() ->
+                    app.morphe.extension.youtube.gestures.FeedItems.hideChannelOnScreen(name, live, words), 300);
+        } catch (Exception ex) {
+            Logger.printException(() -> "afterBlock failure", ex);
+        }
     }
 
     @Nullable

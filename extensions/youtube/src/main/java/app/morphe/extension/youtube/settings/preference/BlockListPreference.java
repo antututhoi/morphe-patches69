@@ -97,8 +97,11 @@ public class BlockListPreference extends Preference {
 
     private static void editKeywords(Context c) {
         android.widget.EditText et = new android.widget.EditText(c);
+        et.setMinLines(5);
+        et.setGravity(android.view.Gravity.TOP);
+        et.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         et.setText(Settings.BLOCK_LIVE_KEYWORDS.get());
-        new AlertDialog.Builder(c).setTitle("Words that mark a livestream (comma separated, in your YouTube language)")
+        new AlertDialog.Builder(c).setTitle("Words that mark a livestream: one per line, exactly as shown on the video (your YouTube language)")
                 .setView(et)
                 .setPositiveButton(android.R.string.ok, (d, w) -> Settings.BLOCK_LIVE_KEYWORDS.save(et.getText().toString()))
                 .setNegativeButton(android.R.string.cancel, null).show();

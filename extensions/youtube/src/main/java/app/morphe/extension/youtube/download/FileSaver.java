@@ -63,7 +63,11 @@ public final class FileSaver {
         ContentResolver cr = c.getContentResolver();
         Uri root = android.provider.DocumentsContract.buildDocumentUriUsingTree(
                 tree, android.provider.DocumentsContract.getTreeDocumentId(tree));
-        Uri dir = findOrCreateChild(cr, tree, root, subFolder, android.provider.DocumentsContract.Document.MIME_TYPE_DIR);
+        Uri dir = root;
+        for (String part : subFolder.split("/")) {
+            if (part.isEmpty()) continue;
+            dir = findOrCreateChild(cr, tree, dir, part, android.provider.DocumentsContract.Document.MIME_TYPE_DIR);
+        }
         Uri file = findChild(cr, tree, dir, fileName);
         if (file == null) {
             file = android.provider.DocumentsContract.createDocument(cr, dir, mime, fileName);

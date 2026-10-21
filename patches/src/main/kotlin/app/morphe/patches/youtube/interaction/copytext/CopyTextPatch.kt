@@ -39,7 +39,8 @@ val copyTextPatch = bytecodePatch(
     execute {
         PreferenceScreen.GENERAL.addPreferences(
             SwitchPreference("morphe_copy_video_title", summary = true),
-            SwitchPreference("morphe_copy_comments", summary = true)
+            SwitchPreference("morphe_copy_comments", summary = true),
+            SwitchPreference("morphe_select_text_dialog", summary = true)
         )
 
         // Verify stubbed classes are not obfuscated.

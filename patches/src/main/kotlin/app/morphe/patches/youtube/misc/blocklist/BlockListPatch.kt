@@ -8,6 +8,7 @@ import app.morphe.patches.shared.misc.settings.preference.SwitchPreference
 import app.morphe.patches.youtube.layout.flyout.flyoutPatch
 import app.morphe.patches.youtube.misc.settings.PreferenceScreen
 import app.morphe.patches.youtube.misc.settings.settingsPatch
+import app.morphe.patches.youtube.misc.playertype.playerTypeHookPatch
 import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
 import app.morphe.util.setExtensionIsPatchIncluded
 
@@ -22,7 +23,7 @@ val blockListPatch = bytecodePatch(
         "hides them from the feed, syncs the list with a multitool-sync.json file " +
         "(Multitool Firefox add-on) and can use MiXplorer as file picker."
 ) {
-    dependsOn(settingsPatch, flyoutPatch, lithoFilterPatch)
+    dependsOn(settingsPatch, flyoutPatch, lithoFilterPatch, playerTypeHookPatch)
 
     compatibleWith(COMPATIBILITY_YOUTUBE)
 
@@ -33,7 +34,9 @@ val blockListPatch = bytecodePatch(
                 tag = PREFERENCE_CLASS,
                 selectable = true
             ),
-            SwitchPreference("morphe_block_list_flyout_menu", summary = true)
+            SwitchPreference("morphe_block_list_flyout_menu", summary = true),
+            SwitchPreference("morphe_block_channel_posts", summary = true),
+            SwitchPreference("morphe_shorts_skip_after_block", summary = true)
         )
 
         addLithoFilter(FILTER_CLASS)

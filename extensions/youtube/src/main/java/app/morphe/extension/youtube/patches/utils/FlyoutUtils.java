@@ -557,6 +557,9 @@ public final class FlyoutUtils {
             nextButtonIndex = ChannelWhitelist.addFlyoutButtons(flyoutPanel, nextButtonIndex, isMyTabHistoryFlyout);
             nextButtonIndex = BlockList.addFlyoutButtons(flyoutPanel, nextButtonIndex, isMyTabHistoryFlyout);
             nextButtonIndex = ThumbnailDownloader.addFlyoutButtons(flyoutPanel, nextButtonIndex, isMyTabHistoryFlyout);
+        } else if (BlockList.isPatchIncluded()) {
+            // Menu of a channel post.
+            nextButtonIndex = app.morphe.extension.youtube.download.PostImages.addFlyoutButtons(flyoutPanel, nextButtonIndex);
         }
 
         // Check the patch first. Loading the button classes runs their static
