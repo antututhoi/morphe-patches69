@@ -274,6 +274,8 @@ public abstract class AbstractPreferenceFragment extends PreferenceFragment {
     private int currentUiMode = -1;
     private static final int WRITE_TEXT_REQUEST_CODE = 45;
     private static final int READ_TEXT_REQUEST_CODE = 46;
+    private static final int PICK_SYNC_FILE_REQUEST_CODE = 47;
+    private Consumer<Uri> pendingSyncFileResult = null;
 
     private String existingSettings = "";
 
@@ -709,7 +711,7 @@ public abstract class AbstractPreferenceFragment extends PreferenceFragment {
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("text/plain");
             intent.putExtra(Intent.EXTRA_TITLE, fileName);
-            startActivityForResult(intent, WRITE_TEXT_REQUEST_CODE);
+            MiXplorerPicker.start(getActivity(), this, intent, WRITE_TEXT_REQUEST_CODE);
         } catch (Exception ex) {
             Logger.printException(() -> "exportTextActivity failure", ex);
         }
@@ -729,9 +731,27 @@ public abstract class AbstractPreferenceFragment extends PreferenceFragment {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("*/*");
-            startActivityForResult(intent, READ_TEXT_REQUEST_CODE);
+            MiXplorerPicker.start(getActivity(), this, intent, READ_TEXT_REQUEST_CODE);
         } catch (Exception ex) {
             Logger.printException(() -> "importTextActivity failure", ex);
+        }
+    }
+
+    /**
+     * Lets the user pick one file to keep syncing with (e.g. multitool-sync.json in a Drive folder).
+     * Read/write access is persisted. Not called if the user picks nothing.
+     */
+    public void pickSyncFileActivity(Consumer<Uri> onResult) {
+        try {
+            pendingSyncFileResult = onResult;
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            MiXplorerPicker.start(getActivity(), this, intent, PICK_SYNC_FILE_REQUEST_CODE);
+        } catch (Exception ex) {
+            Logger.printException(() -> "pickSyncFileActivity failure", ex);
         }
     }
 
@@ -982,6 +1002,17 @@ public abstract class AbstractPreferenceFragment extends PreferenceFragment {
             saveTextToUri(data.getData());
         } else if (requestCode == READ_TEXT_REQUEST_CODE && resultCode == Activity.RESULT_OK && data != null) {
             readTextFromUri(data.getData());
+        } else if (requestCode == PICK_SYNC_FILE_REQUEST_CODE && resultCode == Activity.RESULT_OK
+                && data != null && data.getData() != null && pendingSyncFileResult != null) {
+            Uri uri = data.getData();
+            try {
+                getContext().getContentResolver().takePersistableUriPermission(uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            } catch (Exception ex) {
+                Logger.printInfo(() -> "Persistable permission not available", ex); // e.g. plain file provider
+            }
+            pendingSyncFileResult.accept(uri);
+            pendingSyncFileResult = null;
         }
     }
 

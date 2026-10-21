@@ -397,6 +397,16 @@ Reports are public and are reviewed before a channel is added to a list. Removal
     <string name="morphe_ads_channel_whitelist_summary">Videos from whitelisted channels play with ads, so their creators are paid. Ads stay blocked on every other channel</string>
     <string name="morphe_ads_channel_whitelist_flyout_add">Add channel to ad whitelist</string>
     <string name="morphe_ads_channel_whitelist_flyout_remove">Remove channel from ad whitelist</string>
+    <string name="morphe_block_channel_flyout">Block channel</string>
+    <string name="morphe_unblock_channel_flyout">Unblock channel</string>
+    <string name="morphe_block_live_flyout">Block channel livestreams</string>
+    <string name="morphe_unblock_live_flyout">Unblock channel livestreams</string>
+    <string name="morphe_block_list_added">Added to block list</string>
+    <string name="morphe_block_list_removed">Removed from block list</string>
+    <string name="morphe_block_list_title">Block list</string>
+    <string name="morphe_block_list_summary">Manage blocked channels and livestreams, sync with the Multitool Firefox add-on, choose MiXplorer as file picker</string>
+    <string name="morphe_block_list_flyout_menu_title">Block options in flyout menu</string>
+    <string name="morphe_block_list_flyout_menu_summary">Adds \"Block channel\" and \"Block channel livestreams\" to the video flyout menu</string>
     <string name="morphe_hide_creator_store_shelf_title">Hide creator store shelf</string>
     <string name="morphe_hide_end_screen_store_banner_title">Hide end screen store banner</string>
     <string name="morphe_hide_general_ads_title">Hide general ads</string>

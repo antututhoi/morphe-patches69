@@ -171,6 +171,10 @@ public class Settings extends SharedYouTubeSettings {
     public static final BooleanSetting HIDE_YOUTUBE_DOODLES = new BooleanSetting("morphe_hide_youtube_doodles", TRUE, true, "morphe_hide_youtube_doodles_user_dialog_message");
     public static final IntegerSetting PLAYBACK_IN_FEEDS = new IntegerSetting("morphe_playback_in_feeds", PlaybackInFeedsPatch.MODE_ALWAYS_ON, true);
     public static final BooleanSetting RESTORE_ORIGINAL_TITLES = new BooleanSetting("morphe_restore_original_titles", FALSE, true);
+    public static final StringSetting BLOCK_LIST = new StringSetting("morphe_block_list", "", false);
+    public static final BooleanSetting BLOCK_LIST_FLYOUT_MENU = new BooleanSetting("morphe_block_list_flyout_menu", TRUE);
+    public static final StringSetting BLOCK_LIST_SYNC_URI = new StringSetting("morphe_block_list_sync_uri", "", false);
+    public static final BooleanSetting USE_MIXPLORER_PICKER = new BooleanSetting("morphe_use_mixplorer_picker", FALSE);
     public static final BooleanSetting DISABLE_AUTO_FEED_REFRESH = new BooleanSetting("morphe_disable_auto_feed_refresh", FALSE);
 
     // AiSList
