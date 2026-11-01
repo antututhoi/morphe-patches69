@@ -23,7 +23,9 @@ val downloadThumbnailsPatch = bytecodePatch(
     execute {
         PreferenceScreen.FEED.addPreferences(
             SwitchPreference("morphe_download_thumbnails_flyout", summary = true),
-            SwitchPreference("morphe_download_post_images_flyout", summary = true)
+            SwitchPreference("morphe_download_post_images_flyout", summary = true),
+            SwitchPreference("morphe_download_comment_images_flyout", summary = true),
+            SwitchPreference("morphe_download_gif_to_mp4", summary = true)
         )
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }

@@ -49,6 +49,8 @@ public final class BlockList {
     private static JSONObject cachedDoc = new JSONObject();
     private static List<Target> cachedChannels = new ArrayList<>();
     private static List<Target> cachedLive = new ArrayList<>();
+    private static List<Target> cachedPosts = new ArrayList<>();
+    private static List<Target> cachedShorts = new ArrayList<>();
 
     public static boolean isPatchIncluded() {
         return false; // Modified during patching.
@@ -68,6 +70,8 @@ public final class BlockList {
         }
         cachedChannels = targets(BlockListSync.CHANNELS);
         cachedLive = targets(BlockListSync.LIVE);
+        cachedPosts = targets(BlockListSync.POSTS);
+        cachedShorts = targets(BlockListSync.SHORTS);
     }
 
     private static List<Target> targets(String list) {
@@ -86,6 +90,17 @@ public final class BlockList {
 
     public static synchronized List<Target> getChannels() { load(); return cachedChannels; }
     public static synchronized List<Target> getLive() { load(); return cachedLive; }
+    public static synchronized List<Target> getPosts() { load(); return cachedPosts; }
+    public static synchronized List<Target> getShorts() { load(); return cachedShorts; }
+
+    public static List<Target> getList(String list) {
+        switch (list) {
+            case BlockListSync.LIVE: return getLive();
+            case BlockListSync.POSTS: return getPosts();
+            case BlockListSync.SHORTS: return getShorts();
+            default: return getChannels();
+        }
+    }
 
     /** Document in the sync format: {"channels":{key:{t,d?,name,cid?}},"live":{...}} including tombstones. */
     public static synchronized JSONObject getDocument() {
@@ -133,7 +148,7 @@ public final class BlockList {
     }
 
     public static boolean isBlocked(String list, String name, String cid) {
-        List<Target> targets = list.equals(BlockListSync.LIVE) ? getLive() : getChannels();
+        List<Target> targets = getList(list);
         String lower = name == null ? "" : name.toLowerCase(java.util.Locale.ROOT);
         for (Target t : targets) {
             if ((!cid.isEmpty() && cid.equals(t.cid)) || (!lower.isEmpty() && lower.equals(t.nameLower))) return true;
@@ -188,8 +203,29 @@ public final class BlockList {
 
         nextButtonIndex = addToggle(flyoutPanel, icon, BlockListSync.CHANNELS, channelName, cid,
                 "morphe_block_channel_flyout", "morphe_unblock_channel_flyout", nextButtonIndex);
-        return addToggle(flyoutPanel, icon, BlockListSync.LIVE, channelName, cid,
+        nextButtonIndex = addToggle(flyoutPanel, icon, BlockListSync.LIVE, channelName, cid,
                 "morphe_block_live_flyout", "morphe_unblock_live_flyout", nextButtonIndex);
+        nextButtonIndex = addToggle(flyoutPanel, icon, BlockListSync.SHORTS, channelName, cid,
+                "morphe_block_shorts_flyout", "morphe_unblock_shorts_flyout", nextButtonIndex);
+        return addToggle(flyoutPanel, icon, BlockListSync.POSTS, channelName, cid,
+                "morphe_block_posts_flyout", "morphe_unblock_posts_flyout", nextButtonIndex);
+    }
+
+    /** 69 mod: block the author of a channel post or a comment (menus without a video). */
+    public static int addAuthorButtons(Object flyoutPanel, int index, String name, String cid, boolean comment) {
+        if (!isPatchIncluded() || !Settings.BLOCK_LIST_FLYOUT_MENU.get()) return index;
+        if ((cid == null || cid.isEmpty()) && (name == null || name.isEmpty())) return index;
+        String n = name == null ? "" : name;
+        String id = cid == null ? "" : cid;
+        Drawable icon = ResourceUtils.getDrawable(Utils.appIsUsingBoldIcons()
+                ? "morphe_settings_screen_01_ads_bold" : "morphe_settings_screen_01_ads");
+        index = addToggle(flyoutPanel, icon, BlockListSync.CHANNELS, n, id,
+                "morphe_block_channel_flyout", "morphe_unblock_channel_flyout", index);
+        if (!comment) {
+            index = addToggle(flyoutPanel, icon, BlockListSync.POSTS, n, id,
+                    "morphe_block_posts_flyout", "morphe_unblock_posts_flyout", index);
+        }
+        return index;
     }
 
     private static int addToggle(Object panel, Drawable icon, String list, String name, String cid,
@@ -202,7 +238,7 @@ public final class BlockList {
                 Utils.showToastShort(str("morphe_block_list_removed"));
             } else {
                 add(list, name, cid);
-                Utils.showToastShort(str("morphe_block_list_added"));
+                showUndo(list, name, cid);
                 afterBlock(list, name);
             }
             BlockListFileSync.syncSoon();
@@ -234,11 +270,62 @@ public final class BlockList {
 
     @Nullable
     private static String findKey(String list, String name, String cid) {
-        List<Target> targets = list.equals(BlockListSync.LIVE) ? getLive() : getChannels();
+        List<Target> targets = getList(list);
         String lower = name.toLowerCase(java.util.Locale.ROOT);
         for (Target t : targets) {
             if ((!cid.isEmpty() && cid.equals(t.cid)) || lower.equals(t.nameLower)) return t.key;
         }
         return null;
+    }
+
+    /** 69 mod: "Blocked X · UNDO" bar for a few seconds after blocking. */
+    private static void showUndo(String list, String name, String cid) {
+        Utils.runOnMainThreadDelayed(() -> {
+            try {
+                android.app.Activity a = Utils.getActivity();
+                if (a == null) {
+                    Utils.showToastShort(str("morphe_block_list_added"));
+                    return;
+                }
+                android.view.ViewGroup decor = (android.view.ViewGroup) a.getWindow().getDecorView();
+                float d = a.getResources().getDisplayMetrics().density;
+                android.widget.LinearLayout bar = new android.widget.LinearLayout(a);
+                bar.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+                bg.setColor(0xF0303030);
+                bg.setCornerRadius(10 * d);
+                bar.setBackground(bg);
+                int p = (int) (14 * d);
+                bar.setPadding(p, (int) (6 * d), (int) (6 * d), (int) (6 * d));
+                android.widget.TextView t = new android.widget.TextView(a);
+                String what = list.equals(BlockListSync.LIVE) ? "livestreams of " : list.equals(BlockListSync.SHORTS)
+                        ? "Shorts of " : list.equals(BlockListSync.POSTS) ? "posts of " : "";
+                t.setText("Blocked " + what + (name.isEmpty() ? cid : name));
+                t.setTextColor(0xFFFFFFFF);
+                t.setMaxLines(2);
+                bar.addView(t, new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+                android.widget.Button undo = new android.widget.Button(a);
+                undo.setText("UNDO");
+                undo.setTextColor(0xFF64B5F6);
+                undo.setBackgroundColor(0);
+                bar.addView(undo);
+                android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(-1, -2,
+                        android.view.Gravity.BOTTOM);
+                lp.setMargins((int) (12 * d), 0, (int) (12 * d), (int) (90 * d));
+                decor.addView(bar, lp);
+                Runnable remove = () -> { try { decor.removeView(bar); } catch (Exception ignored) { } };
+                undo.setOnClickListener(v -> {
+                    String key = findKey(list, name, cid);
+                    if (key != null) remove(list, key);
+                    BlockListFileSync.syncSoon();
+                    Utils.showToastShort("Unblocked. Refresh the feed to see it again");
+                    remove.run();
+                });
+                Utils.runOnMainThreadDelayed(remove, 6000);
+            } catch (Exception ex) {
+                Utils.showToastShort(str("morphe_block_list_added"));
+            }
+        }, 350);
     }
 }

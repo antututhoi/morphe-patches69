@@ -71,14 +71,32 @@ public final class ThumbnailDownloader {
         if (videoId == null || videoId.isEmpty()) return index;
         final String id = videoId;
         Drawable icon = Utils.getContext().getResources().getDrawable(android.R.drawable.stat_sys_download, null);
-        return FlyoutUtils.addFlyoutButton(flyoutPanel, icon, "Download thumbnails", v -> {
+        final String key = "thumb:" + id;
+        boolean done = Downloaded.has(key);
+        index = FlyoutUtils.addFlyoutButton(flyoutPanel, icon,
+                done ? "Redownload thumbnail  ✓ downloaded" : "Download thumbnail", v -> {
             FlyoutUtils.dismissFlyout();
             load(id);
         }, index);
+        if (done) {
+            Drawable del = Utils.getContext().getResources().getDrawable(android.R.drawable.ic_menu_delete, null);
+            index = FlyoutUtils.addFlyoutButton(flyoutPanel, del, "Delete downloaded thumbnail", v -> {
+                FlyoutUtils.dismissFlyout();
+                Utils.runOnBackgroundThread(() -> {
+                    int n = Downloaded.delete(key);
+                    Utils.runOnMainThread(() -> Utils.showToastShort(n + " file(s) deleted"));
+                });
+            }, index);
+        }
+        return index;
     }
 
     private static void load(String videoId) {
-        Utils.showToastShort("Loading thumbnails…");
+        if (DownloadJobs.isRunning("thumb:" + videoId)) {
+            Utils.showToastShort("Already downloading");
+            return;
+        }
+        Utils.showToastShort("Loading thumbnail…");
         Utils.runOnBackgroundThread(() -> {
             StringBuilder log = new StringBuilder("videoId=" + videoId + "\n");
             try {
@@ -93,11 +111,10 @@ public final class ThumbnailDownloader {
 
                 List<Thumb> thumbs = new ArrayList<>();
                 Set<String> seen = new HashSet<>();
+                // Only real thumbnails. maxres1/2/3 and hq1/2/3 are frames cut from the video, not thumbnails.
                 String[][] sources = {
-                        {"Main", "maxresdefault.jpg|sddefault.jpg|hq720.jpg|hqdefault.jpg"},
-                        {"Frame 1", "maxres1.jpg|hq1.jpg"},
-                        {"Frame 2", "maxres2.jpg|hq2.jpg"},
-                        {"Frame 3", "maxres3.jpg|hq3.jpg"},
+                        {"Thumbnail", "maxresdefault.jpg|sddefault.jpg|hq720.jpg|hqdefault.jpg"},
+                        {"Original shape (Shorts)", "oardefault.jpg"},
                 };
                 for (String[] src : sources) {
                     for (String file : src[1].split("\\|")) {
@@ -135,7 +152,13 @@ public final class ThumbnailDownloader {
                     fail(log, null);
                     return;
                 }
-                Utils.runOnMainThread(() -> showDialog(m, videoId, thumbs, log));
+                for (Thumb t : thumbs) t.selected = false;
+                if (thumbs.size() == 1) {
+                    thumbs.get(0).selected = true;
+                    save(m, videoId, thumbs, true);
+                } else {
+                    Utils.runOnMainThread(() -> showDialog(m, videoId, thumbs, log));
+                }
             } catch (Exception ex) {
                 fail(log, ex);
             }
@@ -143,70 +166,35 @@ public final class ThumbnailDownloader {
     }
 
     private static void showDialog(VideoMetaRequest.Meta meta, String videoId, List<Thumb> thumbs, StringBuilder log) {
-        Activity activity = Utils.getActivity();
-        if (activity == null) {
-            fail(log.append("No activity for dialog\n"), null);
-            return;
-        }
-        int pad = (int) (12 * activity.getResources().getDisplayMetrics().density);
-        LinearLayout list = new LinearLayout(activity);
-        list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(pad, pad, pad, 0);
+        List<ImagePicker.Item> items = new ArrayList<>();
         for (Thumb t : thumbs) {
-            ImageView img = new ImageView(activity);
-            img.setAdjustViewBounds(true);
-            img.setImageBitmap(t.preview);
-            CheckBox box = new CheckBox(activity);
-            box.setChecked(true);
-            box.setText(t.label + "  " + t.width + "x" + t.height + "  " + (t.data.length / 1024) + " KB");
-            box.setOnCheckedChangeListener((b, checked) -> t.selected = checked);
-            img.setOnClickListener(v -> box.toggle());
-            list.addView(img, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-            list.addView(box);
+            items.add(new ImagePicker.Item(t.label + "  " + t.width + "x" + t.height + "  " + (t.data.length / 1024) + " KB", t.preview));
         }
-        ScrollView scroll = new ScrollView(activity);
-        scroll.addView(list);
-        String title = meta.title.isEmpty() ? "Thumbnails" : meta.title;
-        new AlertDialog.Builder(activity)
-                .setTitle(title)
-                .setView(scroll)
-                .setPositiveButton("Download selected", (d, w) -> save(meta, videoId, thumbs, false))
-                .setNeutralButton("Download all", (d, w) -> save(meta, videoId, thumbs, true))
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
+        ImagePicker.show(meta.title.isEmpty() ? "Thumbnails" : meta.title, items, picked -> {
+            for (int i = 0; i < thumbs.size(); i++) thumbs.get(i).selected = picked.contains(i);
+            save(meta, videoId, thumbs, false);
+        });
     }
 
     private static void save(VideoMetaRequest.Meta meta, String videoId, List<Thumb> thumbs, boolean all) {
-        Utils.runOnBackgroundThread(() -> {
-            StringBuilder log = new StringBuilder("videoId=" + videoId + "\n");
-            try {
-                String channel = FileSaver.sanitize(meta.author.isEmpty() ? "Unknown channel" : meta.author);
-                String title = FileSaver.sanitize(meta.title.isEmpty() ? videoId : meta.title);
-                String baseName = title + "_" + formatDate(meta.date);
-                int saved = 0, number = 0;
-                String where = "";
-                for (Thumb t : thumbs) {
-                    number++;
-                    if (!all && !t.selected) continue;
-                    String name = baseName + (number == 1 ? "" : "_" + number) + ".jpg";
-                    try {
-                        where = FileSaver.save(channel, name, "image/jpeg", t.data);
-                        saved++;
-                    } catch (Exception ex) {
-                        log.append("SAVE FAIL ").append(name).append(": ").append(ex).append('\n');
-                    }
-                }
-                if (saved > 0 && log.indexOf("SAVE FAIL") < 0) {
-                    final String msg = saved + " thumbnail(s) saved to " + where.substring(0, where.lastIndexOf('/'));
-                    Utils.runOnMainThread(() -> Utils.showToastLong(msg));
-                    DownloadNotifier.post("Thumbnails saved", msg, false);
-                } else {
-                    fail(log.append("Saved: ").append(saved).append('\n'), null);
-                }
-            } catch (Exception ex) {
-                fail(log, ex);
+        final String key = "thumb:" + videoId;
+        DownloadJobs.start(key, "Thumbnail", job -> {
+            String channel = FileSaver.sanitize(meta.author.isEmpty() ? "Unknown channel" : meta.author);
+            String title = FileSaver.sanitize(meta.title.isEmpty() ? videoId : meta.title);
+            String baseName = title + "_" + formatDate(meta.date);
+            int saved = 0, number = 0;
+            String where = "";
+            for (Thumb t : thumbs) {
+                number++;
+                if (!all && !t.selected) continue;
+                job.check();
+                String name = baseName + (number == 1 ? "" : "_" + number) + ".jpg";
+                where = FileSaver.save(channel, name, "image/jpeg", t.data);
+                Downloaded.add(key, FileSaver.lastUri.get());
+                saved++;
             }
+            int slash = where.lastIndexOf('/');
+            return saved + " thumbnail(s) saved to " + (slash > 0 ? where.substring(0, slash) : where);
         });
     }
 

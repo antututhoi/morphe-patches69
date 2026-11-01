@@ -64,7 +64,7 @@ public final class BlockListFileSync {
                 JSONObject remoteLists = BlockListSync.extractLists(remote);
                 JSONObject addonLists = BlockListSync.extractAddonFeatureLists(remote);
                 JSONObject merged = new JSONObject();
-                for (String list : new String[]{BlockListSync.CHANNELS, BlockListSync.LIVE}) {
+                for (String list : BlockListSync.ALL) {
                     JSONObject m = BlockListSync.mergeEntries(addonLists.optJSONObject(list), remoteLists.optJSONObject(list));
                     // Add-on text lines can't express removals: a tombstone in yt maps must win over them.
                     m = BlockListSync.mergeEntries(m, local.optJSONObject(list));
@@ -88,6 +88,9 @@ public final class BlockListFileSync {
         JSONObject o = new JSONObject();
         o.put(BlockListSync.CHANNELS, doc.optJSONObject(BlockListSync.CHANNELS) == null ? new JSONObject() : doc.optJSONObject(BlockListSync.CHANNELS));
         o.put(BlockListSync.LIVE, doc.optJSONObject(BlockListSync.LIVE) == null ? new JSONObject() : doc.optJSONObject(BlockListSync.LIVE));
+        for (String l : new String[]{BlockListSync.POSTS, BlockListSync.SHORTS}) {
+            o.put(l, doc.optJSONObject(l) == null ? new JSONObject() : doc.optJSONObject(l));
+        }
         return o;
     }
 

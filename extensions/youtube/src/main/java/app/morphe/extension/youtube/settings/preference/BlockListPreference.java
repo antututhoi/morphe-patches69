@@ -40,6 +40,8 @@ public class BlockListPreference extends Preference {
         String[] items = {
                 "Blocked channels (" + BlockList.getChannels().size() + ")",
                 "Blocked livestreams (" + BlockList.getLive().size() + ")",
+                "Channels with hidden Shorts (" + BlockList.getShorts().size() + ")",
+                "Channels with hidden posts (" + BlockList.getPosts().size() + ")",
                 hasSync ? "Sync now" : "Sync now (choose a file first)",
                 "Choose sync file (multitool-sync.json)" + (hasSync ? " ✓" : ""),
                 "Download folder: " + folderLabel(),
@@ -50,11 +52,13 @@ public class BlockListPreference extends Preference {
             switch (which) {
                 case 0: showList(c, BlockListSync.CHANNELS); break;
                 case 1: showList(c, BlockListSync.LIVE); break;
-                case 2: syncNow(); break;
-                case 3: chooseFile(); break;
-                case 4: chooseDownloadFolder(c); break;
-                case 5: editKeywords(c); break;
-                case 6:
+                case 2: showList(c, BlockListSync.SHORTS); break;
+                case 3: showList(c, BlockListSync.POSTS); break;
+                case 4: syncNow(); break;
+                case 5: chooseFile(); break;
+                case 6: chooseDownloadFolder(c); break;
+                case 7: editKeywords(c); break;
+                case 8:
                     Settings.USE_MIXPLORER_PICKER.save(!Settings.USE_MIXPLORER_PICKER.get());
                     app.morphe.extension.shared.settings.preference.MiXplorerPicker.enabled =
                             Settings.USE_MIXPLORER_PICKER.get();
@@ -65,7 +69,7 @@ public class BlockListPreference extends Preference {
     }
 
     private static void showList(Context c, String list) {
-        List<BlockList.Target> targets = list.equals(BlockListSync.LIVE) ? BlockList.getLive() : BlockList.getChannels();
+        List<BlockList.Target> targets = BlockList.getList(list);
         if (targets.isEmpty()) { Utils.showToastShort("Empty"); return; }
         List<String> names = new ArrayList<>();
         for (BlockList.Target t : targets) names.add(t.name);

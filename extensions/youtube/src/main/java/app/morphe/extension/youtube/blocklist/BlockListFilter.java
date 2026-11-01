@@ -49,6 +49,9 @@ public final class BlockListFilter extends Filter {
             "text_post_responsive_root.e",
             "text_post_root.e");
 
+    private final StringFilterGroup comments = new StringFilterGroup(null, "comment_thread");
+    private final StringFilterGroup shortsItems = new StringFilterGroup(null,
+            "shorts_video_cell", "shorts_pivot_item", "inline_shorts", "reel_item");
     private final ByteArrayFilterGroup liveBuffer = new ByteArrayFilterGroup(
             null, "yt_outline_live_black", "yt_outline_experimental_live_black");
 
@@ -60,7 +63,7 @@ public final class BlockListFilter extends Filter {
         app.morphe.extension.shared.settings.preference.MiXplorerPicker.enabled =
                 Settings.USE_MIXPLORER_PICKER.get();
         BlockListFileSync.syncSoon();
-        addPathCallbacks(feedItems, posts);
+        addPathCallbacks(feedItems, posts, comments, shortsItems);
     }
 
     private synchronized List<byte[]> keywordBytes() {
@@ -120,9 +123,25 @@ public final class BlockListFilter extends Filter {
 
         List<BlockList.Target> channels = BlockList.getChannels();
 
+        if (matchedGroup == comments) {
+            app.morphe.extension.youtube.download.PostImages.onCommentBuffer(buffer, asciiStrings.getStrings());
+            // Only by channel id: a name could also be written inside someone else's comment.
+            if (!Settings.BLOCK_IN_COMMENTS.get()) return false;
+            for (BlockList.Target t : channels) {
+                if (t.cidBytes != null && FlyoutUtils.byteIndexOf(buffer, t.cidBytes) >= 0) return true;
+            }
+            return false;
+        }
         if (matchedGroup == posts) {
             app.morphe.extension.youtube.download.PostImages.onPostBuffer(buffer, asciiStrings.getStrings());
+            List<BlockList.Target> postOnly = BlockList.getPosts();
+            if (!postOnly.isEmpty() && matches(postOnly, accessibility, buffer)) return true;
             return Settings.BLOCK_CHANNEL_POSTS.get() && !channels.isEmpty() && matches(channels, accessibility, buffer);
+        }
+        if (matchedGroup == shortsItems) {
+            List<BlockList.Target> shortsOnly = BlockList.getShorts();
+            if (!shortsOnly.isEmpty() && matches(shortsOnly, accessibility, buffer)) return true;
+            return !channels.isEmpty() && matches(channels, accessibility, buffer);
         }
 
         if (!channels.isEmpty() && matches(channels, accessibility, buffer)) return true;

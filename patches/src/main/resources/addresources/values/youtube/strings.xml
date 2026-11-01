@@ -422,6 +422,16 @@ Reports are public and are reviewed before a channel is added to a list. Removal
     <string name="morphe_shorts_skip_after_block_title">Skip Short after blocking</string>
     <string name="morphe_shorts_skip_after_block_summary">Blocking the channel of a Short moves to the next Short</string>
     <string name="morphe_download_post_images_flyout_title">Download post images in flyout menu</string>
+    <string name="morphe_download_comment_images_flyout_title">Download comment images in flyout menu</string>
+    <string name="morphe_download_comment_images_flyout_summary">Adds \"Download comment image\" to the 3-dot menu of a comment with an image. Saved straight into the download folder</string>
+    <string name="morphe_download_gif_to_mp4_title">Save GIFs as video</string>
+    <string name="morphe_download_gif_to_mp4_summary">Animated GIFs are turned into a much smaller MP4 when downloaded</string>
+    <string name="morphe_block_in_comments_title">Hide comments of blocked channels</string>
+    <string name="morphe_block_in_comments_summary">Comments written by a blocked channel are hidden. Block someone from the 3-dot menu of their comment</string>
+    <string name="morphe_block_shorts_flyout">Hide this channel\'s Shorts</string>
+    <string name="morphe_unblock_shorts_flyout">Show this channel\'s Shorts again</string>
+    <string name="morphe_block_posts_flyout">Hide this channel\'s posts</string>
+    <string name="morphe_unblock_posts_flyout">Show this channel\'s posts again</string>
     <string name="morphe_download_post_images_flyout_summary">Adds \"Download post images\" to the 3-dot menu of channel posts</string>
     <string name="morphe_fullscreen_progress_bar_title">Always show progress bar in fullscreen</string>
     <string name="morphe_fullscreen_progress_bar_summary">Shows a progress bar at the bottom in fullscreen that can be dragged to seek</string>

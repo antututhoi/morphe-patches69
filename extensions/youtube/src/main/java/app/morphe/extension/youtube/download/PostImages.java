@@ -1,12 +1,15 @@
 /*
- * "Download post images" in the 3-dot menu of a channel post.
- * Image addresses are read from the post while it is laid out (feed filter), and matched to
- * the post that was touched by its texts. Saved to
- *   <download folder>/<channel>/<yymmdd>_<post start>.jpg            (one image)
- *   <download folder>/<channel>/<yymmdd>_<post start>/1.jpg, 2.jpg … (several images)
+ * "Download post images" / "Download comment image" in the 3-dot menu.
+ * Image addresses are read from posts and comments while they are laid out (feed filter), and
+ * matched to the item that was touched by its texts.
+ *   Posts:    <download folder>/<channel>/<yymmdd>_<post start>[_n].jpg
+ *   Comments: <download folder>/<yymmdd>_comment_<comment start>[_n].jpg
+ * Animated GIFs can be turned into MP4.
  */
 package app.morphe.extension.youtube.download;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.drawable.Drawable;
 
 import java.io.ByteArrayOutputStream;
@@ -34,24 +37,48 @@ import app.morphe.extension.youtube.settings.Settings;
 
 @SuppressWarnings("unused")
 public final class PostImages {
-
     private static final Pattern IMAGE_URL = Pattern.compile("https://yt3\\.ggpht\\.com/[A-Za-z0-9_\\-./]+(=[A-Za-z0-9_\\-]+)?");
     private static final Pattern SIZE = Pattern.compile("(?:^|-)s(\\d+)");
-    private static final int MAX_POSTS = 40;
+    private static final Pattern HANDLE = Pattern.compile("/@([A-Za-z0-9._\\-]{3,40})");
+    private static final Pattern CHANNEL_ID = Pattern.compile("UC[A-Za-z0-9_\\-]{22}");
+    private static final int MAX_ITEMS = 40;
 
-    /** buffer of the post -> image base addresses (in order). */
-    private static final Map<byte[], List<String>> posts = new LinkedHashMap<byte[], List<String>>(MAX_POSTS, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<byte[], List<String>> eldest) {
-            return size() > MAX_POSTS;
+    /** A post or comment that was laid out. */
+    private static final class Item {
+        final byte[] buffer;
+        final List<String> bases;
+        final String handle;
+        final String cid;
+        Item(byte[] buffer, List<String> bases, String handle, String cid) {
+            this.buffer = buffer; this.bases = bases; this.handle = handle; this.cid = cid;
         }
-    };
+    }
+
+    private static final Map<byte[], Item> posts = lru();
+    private static final Map<byte[], Item> comments = lru();
+
+    private static Map<byte[], Item> lru() {
+        return new LinkedHashMap<byte[], Item>(MAX_ITEMS, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<byte[], Item> eldest) {
+                return size() > MAX_ITEMS;
+            }
+        };
+    }
 
     private PostImages() {}
 
     /** Called by the feed filter for every post laid out. */
     public static void onPostBuffer(byte[] buffer, String ascii) {
-        if (!Settings.DOWNLOAD_POST_IMAGES_FLYOUT.get()) return;
+        remember(posts, buffer, ascii, false);
+    }
+
+    /** Called by the feed filter for every comment laid out. */
+    public static void onCommentBuffer(byte[] buffer, String ascii) {
+        remember(comments, buffer, ascii, true);
+    }
+
+    private static void remember(Map<byte[], Item> into, byte[] buffer, String ascii, boolean comment) {
         Set<String> bases = new LinkedHashSet<>();
         Matcher m = IMAGE_URL.matcher(ascii);
         while (m.find()) {
@@ -62,96 +89,228 @@ public final class PostImages {
             String params = eq < 0 ? "" : url.substring(eq + 1);
             if (params.contains("-c-k")) continue; // round avatar crops
             Matcher size = SIZE.matcher(params);
-            if (size.find() && Integer.parseInt(size.group(1)) < 200 && !params.contains("fcrop")) continue;
+            if (size.find() && Integer.parseInt(size.group(1)) < (comment ? 120 : 200) && !params.contains("fcrop")) continue;
             bases.add(base);
         }
-        if (bases.isEmpty()) return;
-        synchronized (posts) {
-            posts.put(buffer, new ArrayList<>(bases));
+        // Kept even without images: the menu also offers blocking the author.
+        Matcher h = HANDLE.matcher(ascii);
+        String handle = h.find() ? h.group(1) : "";
+        Matcher c = CHANNEL_ID.matcher(ascii);
+        String cid = c.find() ? c.group() : "";
+        synchronized (into) {
+            into.put(buffer, new Item(buffer, new ArrayList<>(bases), handle, cid));
         }
     }
 
-    private static List<String> findImagesOfTouchedPost() {
-        List<String> texts = FeedGestures.getLastTouchedTexts();
-        synchronized (posts) {
-            for (Map.Entry<byte[], List<String>> e : posts.entrySet()) {
-                int hits = 0;
+    /**
+     * The item whose buffer holds the most of the touched texts. Longer texts count more,
+     * so a shared short text ("2 days ago", the channel name) can't pick a neighbour post.
+     */
+    private static Item findTouched(Map<byte[], Item> in, List<String> texts) {
+        Item best = null;
+        int bestScore = 0;
+        synchronized (in) {
+            for (Item item : in.values()) {
+                int score = 0;
                 for (String t : texts) {
-                    if (t.length() < 8 || t.length() > 300) continue;
+                    if (t.length() < 6 || t.length() > 400) continue;
                     String probe = t.length() > 60 ? t.substring(0, 60) : t;
-                    if (FlyoutUtils.byteIndexOf(e.getKey(), probe.getBytes(StandardCharsets.UTF_8)) >= 0) hits++;
-                    if (hits >= 1) return e.getValue();
+                    if (FlyoutUtils.byteIndexOf(item.buffer, probe.getBytes(StandardCharsets.UTF_8)) >= 0) {
+                        score += Math.min(probe.length(), 60);
+                    }
+                }
+                // LinkedHashMap in access order: later = newer, so ">=" prefers the newest on a tie.
+                if (score > 0 && score >= bestScore) {
+                    best = item;
+                    bestScore = score;
                 }
             }
         }
-        return null;
+        return bestScore >= 12 ? best : null;
     }
 
     public static int addFlyoutButtons(Object flyoutPanel, int index) {
-        if (!Settings.DOWNLOAD_POST_IMAGES_FLYOUT.get()) return index;
-        final List<String> images = findImagesOfTouchedPost();
-        if (images == null || images.isEmpty()) return index;
-        final List<String> texts = new ArrayList<>(FeedGestures.getLastTouchedTexts());
+        List<String> texts = new ArrayList<>(FeedGestures.getLastTouchedTexts());
         Drawable icon = Utils.getContext().getResources().getDrawable(android.R.drawable.stat_sys_download, null);
-        return FlyoutUtils.addFlyoutButton(flyoutPanel, icon,
-                "Download post images (" + images.size() + ")", v -> {
-                    FlyoutUtils.dismissFlyout();
-                    download(images, texts);
-                }, index);
+        Drawable delIcon = Utils.getContext().getResources().getDrawable(android.R.drawable.ic_menu_delete, null);
+
+        // A comment first: then the post button never shows inside the comments.
+        Item comment = findTouched(comments, texts);
+        if (comment != null) {
+            if (Settings.DOWNLOAD_COMMENT_IMAGES_FLYOUT.get() && !comment.bases.isEmpty()) {
+                index = addButtons(flyoutPanel, index, icon, delIcon, "cmt:" + comment.bases.get(0), comment, texts, true);
+            }
+            return app.morphe.extension.youtube.blocklist.BlockList.addAuthorButtons(
+                    flyoutPanel, index, authorName(comment, texts), comment.cid, true);
+        }
+        Item post = findTouched(posts, texts);
+        if (post == null) return index;
+        if (Settings.DOWNLOAD_POST_IMAGES_FLYOUT.get() && !post.bases.isEmpty()) {
+            index = addButtons(flyoutPanel, index, icon, delIcon, "post:" + post.bases.get(0), post, texts, false);
+        }
+        return app.morphe.extension.youtube.blocklist.BlockList.addAuthorButtons(
+                flyoutPanel, index, channelName(post, texts), post.cid, false);
     }
 
-    private static void download(List<String> bases, List<String> texts) {
-        Utils.showToastShort("Downloading " + bases.size() + " image(s)…");
-        Utils.runOnBackgroundThread(() -> {
+    private static int addButtons(Object panel, int index, Drawable icon, Drawable delIcon, String key,
+                                  Item item, List<String> texts, boolean comment) {
+        String what = comment ? "comment image" : "post image";
+        int n = item.bases.size();
+        boolean done = Downloaded.has(key);
+        String label = (done ? "Redownload " : "Download ") + what + (n > 1 ? "s (" + n + ")" : "")
+                + (done ? "  ✓ downloaded" : "");
+        index = FlyoutUtils.addFlyoutButton(panel, icon, label, v -> {
+            FlyoutUtils.dismissFlyout();
+            download(key, item, texts, comment);
+        }, index);
+        if (done) {
+            index = FlyoutUtils.addFlyoutButton(panel, delIcon, "Delete downloaded " + what + "s", v -> {
+                FlyoutUtils.dismissFlyout();
+                Utils.runOnBackgroundThread(() -> {
+                    int removed = Downloaded.delete(key);
+                    Utils.runOnMainThread(() -> Utils.showToastShort(removed + " file(s) deleted"));
+                });
+            }, index);
+        }
+        return index;
+    }
+
+    // ---------------- download ----------------
+
+    private static final class Fetched {
+        final byte[] data;
+        final String ext, mime;
+        Fetched(byte[] data, String ext, String mime) { this.data = data; this.ext = ext; this.mime = mime; }
+    }
+
+    private static void download(String key, Item item, List<String> texts, boolean comment) {
+        final String channel = comment ? "" : channelName(item, texts);
+        final String body = bodyText(texts, channel);
+        final String date = new SimpleDateFormat("yyMMdd", Locale.US).format(new Date());
+        final String start = body.isEmpty() ? (comment ? "comment" : "post") : (body.length() > 40 ? body.substring(0, 40) : body);
+        final String name = FileSaver.sanitize(date + "_" + (comment ? "comment_" : "") + start);
+        final String folder = comment ? "" : FileSaver.sanitize(channel);
+        final List<String> bases = item.bases;
+
+        DownloadJobs.start(key, comment ? "Comment image" : "Post images", job -> {
             StringBuilder log = new StringBuilder();
-            // Post header: channel name first, then the time, then the text.
-            String channel = texts.isEmpty() ? "Posts" : texts.get(0);
-            String body = "";
-            for (String t : texts) {
-                if (t.length() > body.length() && t.length() < 2000 && !t.equals(channel)) body = t;
-            }
-            String date = new SimpleDateFormat("yyMMdd", Locale.US).format(new Date());
-            String start = body.isEmpty() ? "post" : (body.length() > 40 ? body.substring(0, 40) : body);
-            String name = FileSaver.sanitize(date + "_" + start);
-            String folder = FileSaver.sanitize(channel);
-            if (bases.size() > 1) folder = folder + "/" + name;
-            int saved = 0;
-            String where = "";
+            List<Fetched> fetched = new ArrayList<>();
             for (int i = 0; i < bases.size(); i++) {
-                String base = bases.get(i);
-                byte[] data = null;
-                for (String url : new String[]{base + "=s0", base + "=s2048", base}) {
-                    try {
-                        data = get(url);
-                        if (data.length < 2048) throw new java.io.IOException("too small: " + data.length + " bytes");
-                        log.append("OK ").append(url).append('\n');
-                        break;
-                    } catch (Exception ex) {
-                        log.append("FAIL ").append(url).append(": ").append(ex.getMessage()).append('\n');
-                        data = null;
-                    }
-                }
-                if (data == null) continue;
-                String[] type = imageType(data);
-                String file = (bases.size() > 1 ? String.valueOf(i + 1) : name) + type[0];
-                try {
-                    where = FileSaver.save(folder, file, type[1], data);
-                    saved++;
-                } catch (Exception ex) {
-                    log.append("SAVE FAIL ").append(file).append(": ").append(ex).append('\n');
-                }
+                job.check();
+                job.progress("Downloading " + (i + 1) + " / " + bases.size());
+                fetched.add(fetch(bases.get(i), log));
             }
-            if (saved == bases.size()) {
-                String msg = saved + " image(s) saved to " + where.substring(0, where.lastIndexOf('/'));
-                Utils.runOnMainThread(() -> Utils.showToastLong(msg));
-                DownloadNotifier.post("Post images saved", msg, false);
-            } else {
-                log.insert(0, "Saved " + saved + " of " + bases.size() + "\n");
-                Logger.printInfo(() -> "Post image download failed:\n" + log);
-                DownloadNotifier.post("Post image download failed", log.toString(), true);
-                Utils.runOnMainThread(() -> Utils.showToastLong("Post image download failed. See notification"));
+            int ok = 0;
+            for (Fetched f : fetched) if (f != null) ok++;
+            if (ok == 0) throw new java.io.IOException("No image could be downloaded\n" + log);
+            if (ok > 1) {
+                // Let the user choose; saving happens after the window closes.
+                List<ImagePicker.Item> items = new ArrayList<>();
+                List<Integer> map = new ArrayList<>();
+                for (int i = 0; i < fetched.size(); i++) {
+                    Fetched f = fetched.get(i);
+                    if (f == null) continue;
+                    items.add(new ImagePicker.Item((i + 1) + "  " + f.ext.substring(1).toUpperCase(Locale.ROOT)
+                            + "  " + (f.data.length / 1024) + " KB", preview(f.data)));
+                    map.add(i);
+                }
+                Utils.runOnMainThread(() -> ImagePicker.show(start, items, picked ->
+                        DownloadJobs.start("save:" + key, comment ? "Comment images" : "Post images", j2 -> {
+                            List<Integer> chosen = new ArrayList<>();
+                            for (int p : picked) chosen.add(map.get(p));
+                            return save(j2, key, fetched, chosen, folder, name, true);
+                        })));
+                return null;
             }
+            List<Integer> all = new ArrayList<>();
+            for (int i = 0; i < fetched.size(); i++) if (fetched.get(i) != null) all.add(i);
+            return save(job, key, fetched, all, folder, name, bases.size() > 1);
         });
+    }
+
+    private static String save(DownloadJobs.Job job, String key, List<Fetched> fetched, List<Integer> which,
+                               String folder, String name, boolean numbered) throws Exception {
+        String where = "";
+        int saved = 0;
+        for (int i : which) {
+            job.check();
+            Fetched f = fetched.get(i);
+            byte[] data = f.data;
+            String ext = f.ext, mime = f.mime;
+            if (".gif".equals(ext) && Settings.DOWNLOAD_GIF_TO_MP4.get()) {
+                job.progress("Converting GIF to video…");
+                byte[] mp4 = GifToMp4.convert(data);
+                if (mp4 != null && mp4.length < data.length) {
+                    data = mp4;
+                    ext = ".mp4";
+                    mime = "video/mp4";
+                }
+            }
+            String file = name + (numbered ? "_" + (i + 1) : "") + ext;
+            where = FileSaver.save(folder, file, mime, data);
+            Downloaded.add(key, FileSaver.lastUri.get());
+            saved++;
+        }
+        int slash = where.lastIndexOf('/');
+        return saved + " file(s) saved to " + (slash > 0 ? where.substring(0, slash) : where);
+    }
+
+    private static Fetched fetch(String base, StringBuilder log) {
+        for (String url : new String[]{base + "=s0", base + "=s2048", base}) {
+            try {
+                byte[] data = get(url);
+                if (data.length < 2048) throw new java.io.IOException("too small: " + data.length + " bytes");
+                String[] type = imageType(data);
+                return new Fetched(data, type[0], type[1]);
+            } catch (Exception ex) {
+                log.append("FAIL ").append(url).append(": ").append(ex.getMessage()).append('\n');
+            }
+        }
+        Logger.printInfo(() -> "Image download failed:\n" + log);
+        return null;
+    }
+
+    private static Bitmap preview(byte[] data) {
+        BitmapFactory.Options b = new BitmapFactory.Options();
+        b.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(data, 0, data.length, b);
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inSampleSize = Math.max(1, Math.max(b.outWidth, b.outHeight) / 480);
+        return BitmapFactory.decodeByteArray(data, 0, data.length, o);
+    }
+
+    /**
+     * The channel's display name: a short touched text that also appears in this post and
+     * doesn't look like a time or a counter. Falls back to the @handle.
+     */
+    private static String channelName(Item item, List<String> texts) {
+        for (String t : texts) {
+            String s = t.trim();
+            if (s.length() < 2 || s.length() > 50) continue;
+            String low = s.toLowerCase(Locale.ROOT);
+            if (low.matches(".*\\d.*(ago|trước|giờ|ngày|day|week|month|year|hour|minute|second).*")) continue;
+            if (low.matches("[\\d.,kmb\\s]+")) continue;
+            if (low.startsWith("@")) return s.substring(1);
+            if (FlyoutUtils.byteIndexOf(item.buffer, s.getBytes(StandardCharsets.UTF_8)) >= 0) return s;
+        }
+        if (!item.handle.isEmpty()) return item.handle;
+        return "Posts";
+    }
+
+    private static String authorName(Item item, List<String> texts) {
+        for (String t : texts) {
+            String s = t.trim();
+            if (s.startsWith("@") && s.length() <= 40 && !s.contains(" ")) return s.substring(1);
+        }
+        return item.handle;
+    }
+
+    private static String bodyText(List<String> texts, String channel) {
+        String body = "";
+        for (String t : texts) {
+            if (t.length() > body.length() && t.length() < 2000 && !t.equals(channel)) body = t;
+        }
+        return body.replace('\n', ' ').trim();
     }
 
     private static String[] imageType(byte[] d) {

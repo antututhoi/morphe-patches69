@@ -36,6 +36,7 @@ val blockListPatch = bytecodePatch(
             ),
             SwitchPreference("morphe_block_list_flyout_menu", summary = true),
             SwitchPreference("morphe_block_channel_posts", summary = true),
+            SwitchPreference("morphe_block_in_comments", summary = true),
             SwitchPreference("morphe_shorts_skip_after_block", summary = true)
         )
 

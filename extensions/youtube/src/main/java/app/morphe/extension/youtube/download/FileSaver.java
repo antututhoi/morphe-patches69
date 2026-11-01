@@ -27,7 +27,11 @@ public final class FileSaver {
     }
 
     /** @return a readable location for messages. */
-    public static String save(String relativeFolder, String fileName, String mime, byte[] data) throws Exception {
+    /** 69 mod: where the last save() on this thread wrote (content uri or file path), for "delete downloaded". */
+    public static final ThreadLocal<String> lastUri = new ThreadLocal<>();
+
+    /** One save at a time, so two downloads never create the same channel folder twice. */
+    public static synchronized String save(String relativeFolder, String fileName, String mime, byte[] data) throws Exception {
         Context c = Utils.getContext();
         String tree = app.morphe.extension.youtube.settings.Settings.DOWNLOAD_FOLDER_URI.get();
         if (!tree.isEmpty()) {
@@ -41,6 +45,7 @@ public final class FileSaver {
             v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/" + relativeFolder);
             Uri uri = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
             if (uri == null) throw new java.io.IOException("MediaStore refused to create " + fileName);
+            lastUri.set(uri.toString());
             try (OutputStream out = cr.openOutputStream(uri)) {
                 if (out == null) throw new java.io.IOException("Cannot open " + uri);
                 out.write(data);
@@ -51,6 +56,7 @@ public final class FileSaver {
         File dir = new File(c.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), relativeFolder);
         if (!dir.isDirectory() && !dir.mkdirs()) throw new java.io.IOException("Cannot create " + dir);
         File f = new File(dir, fileName);
+        lastUri.set(f.getAbsolutePath());
         try (FileOutputStream out = new FileOutputStream(f)) {
             out.write(data);
         }
@@ -73,6 +79,7 @@ public final class FileSaver {
             file = android.provider.DocumentsContract.createDocument(cr, dir, mime, fileName);
         }
         if (file == null) throw new java.io.IOException("Cannot create " + fileName + " in the chosen folder");
+        lastUri.set(file.toString());
         try (OutputStream out = cr.openOutputStream(file, "wt")) {
             if (out == null) throw new java.io.IOException("Cannot open " + file);
             out.write(data);

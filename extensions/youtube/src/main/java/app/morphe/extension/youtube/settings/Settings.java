@@ -184,6 +184,9 @@ public class Settings extends SharedYouTubeSettings {
     public static final BooleanSetting BLOCK_CHANNEL_POSTS = new BooleanSetting("morphe_block_channel_posts", TRUE);
     public static final BooleanSetting SHORTS_SKIP_AFTER_BLOCK = new BooleanSetting("morphe_shorts_skip_after_block", TRUE);
     public static final BooleanSetting DOWNLOAD_POST_IMAGES_FLYOUT = new BooleanSetting("morphe_download_post_images_flyout", TRUE);
+    public static final BooleanSetting DOWNLOAD_COMMENT_IMAGES_FLYOUT = new BooleanSetting("morphe_download_comment_images_flyout", TRUE);
+    public static final BooleanSetting DOWNLOAD_GIF_TO_MP4 = new BooleanSetting("morphe_download_gif_to_mp4", TRUE);
+    public static final BooleanSetting BLOCK_IN_COMMENTS = new BooleanSetting("morphe_block_in_comments", TRUE);
     public static final BooleanSetting FULLSCREEN_PROGRESS_BAR = new BooleanSetting("morphe_fullscreen_progress_bar", TRUE, true);
     public static final BooleanSetting USE_MIXPLORER_PICKER = new BooleanSetting("morphe_use_mixplorer_picker", FALSE);
     public static final BooleanSetting DISABLE_AUTO_FEED_REFRESH = new BooleanSetting("morphe_disable_auto_feed_refresh", FALSE);

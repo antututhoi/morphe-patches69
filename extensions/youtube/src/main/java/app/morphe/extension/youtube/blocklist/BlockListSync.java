@@ -15,6 +15,10 @@ public final class BlockListSync {
     public static final String SYNC_FILE_NAME = "multitool-sync.json";
     public static final String CHANNELS = "channels";
     public static final String LIVE = "live";
+    /** 69 mod: hide only the community posts / only the Shorts of these channels. */
+    public static final String POSTS = "posts";
+    public static final String SHORTS = "shorts";
+    public static final String[] ALL = {CHANNELS, LIVE, POSTS, SHORTS};
 
     private BlockListSync() {}
 
@@ -60,7 +64,7 @@ public final class BlockListSync {
         if (!doc.has("marks")) doc.put("marks", new JSONObject());
         JSONObject yt = doc.optJSONObject("yt");
         if (yt == null) yt = new JSONObject();
-        for (String list : new String[]{CHANNELS, LIVE}) {
+        for (String list : ALL) {
             yt.put(list, mergeEntries(yt.optJSONObject(list), local == null ? null : local.optJSONObject(list)));
         }
         doc.put("yt", yt);
@@ -73,6 +77,9 @@ public final class BlockListSync {
         JSONObject yt = doc == null ? null : doc.optJSONObject("yt");
         out.put(CHANNELS, yt != null && yt.optJSONObject(CHANNELS) != null ? yt.optJSONObject(CHANNELS) : new JSONObject());
         out.put(LIVE, yt != null && yt.optJSONObject(LIVE) != null ? yt.optJSONObject(LIVE) : new JSONObject());
+        for (String l : new String[]{POSTS, SHORTS}) {
+            out.put(l, yt != null && yt.optJSONObject(l) != null ? yt.optJSONObject(l) : new JSONObject());
+        }
         return out;
     }
 
