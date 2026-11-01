@@ -46,6 +46,10 @@ public final class FeedPositionGuard {
     private static long restoreEndsAt;       // 0 while waiting for the feed to become visible
     private static int expectedOffset = -1;
     private static boolean restoredOnce;
+    // 69 mod: the item that was at the top, to land exactly on it.
+    private static String anchorSig = "";
+    private static int anchorTop;
+    private static boolean chunking;
 
     public static boolean isPatchIncluded() {
         return false; // Modified during patching.
@@ -91,6 +95,7 @@ public final class FeedPositionGuard {
         try {
             resumed = false;
             handler.removeCallbacksAndMessages(null);
+            chunking = false;
             if (enabled() && feedVisible() && !armed) sample(activity);
         } catch (Exception ex) {
             Logger.printException(() -> "onPause failure", ex);
@@ -102,6 +107,7 @@ public final class FeedPositionGuard {
             activityRef = new WeakReference<>(activity);
             resumed = true;
             handler.removeCallbacksAndMessages(null);
+            chunking = false;
             if (!enabled()) return;
             if (savedOffset >= MIN_OFFSET_TO_RESTORE) {
                 arm();
@@ -127,6 +133,7 @@ public final class FeedPositionGuard {
         if (activity == null || !resumed || !enabled() || !armed || !feedVisible()) return;
         // The feed just became visible again: start the check window now.
         handler.removeCallbacksAndMessages(null);
+        chunking = false;
         restoreEndsAt = 0;
         handler.postDelayed(() -> restoreStep(activity), RESTORE_POLL_MS);
     }
@@ -143,6 +150,17 @@ public final class FeedPositionGuard {
         RecyclerView rv = findFeed(activity);
         if (rv == null) return;
         savedOffset = rv.canScrollVertically(-1) ? Math.max(rv.computeVerticalScrollOffset(), 1) : 0;
+        anchorSig = "";
+        for (int i = 0, n = rv.getChildCount(); i < n; i++) {
+            View child = rv.getChildAt(i);
+            if (child == null || child.getBottom() <= 0) continue;
+            String sig = signature(child, 0);
+            if (sig != null) {
+                anchorSig = sig;
+                anchorTop = child.getTop();
+                break;
+            }
+        }
     }
 
     private static void restoreStep(Activity activity) {
@@ -166,12 +184,16 @@ public final class FeedPositionGuard {
                     return;
                 }
                 int delta = savedOffset - current;
-                if (current < MIN_OFFSET_TO_RESTORE && delta > MIN_OFFSET_TO_RESTORE) {
+                if (chunking) {
+                    // A step-by-step scroll is running; check again later.
+                } else if (current < MIN_OFFSET_TO_RESTORE && delta > MIN_OFFSET_TO_RESTORE) {
                     Logger.printDebug(() -> "Feed jumped to top, restoring offset " + savedOffset);
-                    rv.scrollBy(0, delta);
-                    expectedOffset = rv.computeVerticalScrollOffset();
+                    // One huge scrollBy lays out every item in between on the main thread
+                    // (seconds -> "app not responding"). Go one screen per frame instead.
+                    chunking = true;
                     restoredOnce = true;
-                    restoreEndsAt = Math.max(restoreEndsAt, now + 1500);
+                    restoreEndsAt = Math.max(restoreEndsAt, now + 8000);
+                    chunkScroll(activity, rv, 0);
                 } else if (current >= MIN_OFFSET_TO_RESTORE) {
                     expectedOffset = current;
                     if (!restoredOnce && now > restoreEndsAt - RESTORE_WINDOW_MS + 2500) {
@@ -190,7 +212,62 @@ public final class FeedPositionGuard {
         }
     }
 
+    private static void chunkScroll(Activity activity, RecyclerView rv, int steps) {
+        try {
+            if (!resumed || !armed || steps > 200) {
+                chunking = false;
+                return;
+            }
+            // Landed near the old top item? Snap exactly onto it.
+            if (!anchorSig.isEmpty()) {
+                for (int i = 0, n = rv.getChildCount(); i < n; i++) {
+                    View child = rv.getChildAt(i);
+                    if (child != null && anchorSig.equals(signature(child, 0))) {
+                        rv.scrollBy(0, child.getTop() - anchorTop);
+                        expectedOffset = rv.computeVerticalScrollOffset();
+                        chunking = false;
+                        return;
+                    }
+                }
+            }
+            int current = rv.computeVerticalScrollOffset();
+            int remaining = savedOffset - current;
+            if (Math.abs(remaining) < 40 || (!rv.canScrollVertically(1) && remaining > 0)) {
+                expectedOffset = current;
+                chunking = false;
+                return;
+            }
+            int step = Math.max(-rv.getHeight(), Math.min(rv.getHeight(), remaining));
+            rv.scrollBy(0, step);
+            handler.postDelayed(() -> chunkScroll(activity, rv, steps + 1), 16);
+        } catch (Exception ex) {
+            chunking = false;
+            Logger.printException(() -> "chunkScroll failure", ex);
+        }
+    }
+
+    /** Something that identifies a feed item: its first description or text. */
+    @Nullable
+    private static String signature(View v, int depth) {
+        if (depth > 12) return null;
+        CharSequence cd = v.getContentDescription();
+        if (cd != null && cd.length() >= 8) return cd.toString();
+        if (v instanceof android.widget.TextView) {
+            CharSequence t = ((android.widget.TextView) v).getText();
+            if (t != null && t.length() >= 8) return t.toString();
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0, n = Math.min(g.getChildCount(), 12); i < n; i++) {
+                String s = signature(g.getChildAt(i), depth + 1);
+                if (s != null) return s;
+            }
+        }
+        return null;
+    }
+
     private static void finish(Activity activity) {
+        chunking = false;
         armed = false;
         expectedOffset = -1;
         scheduleSample(activity);
