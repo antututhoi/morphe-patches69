@@ -419,6 +419,36 @@ public final class FlyoutUtils {
         runFlyoutVisibilityHandler();
     }
 
+    /** 69 mod: YouTube's own menu row whose text matches [pattern], or null. */
+    @Nullable
+    public static View findFlyoutItem(Object flyoutPanel, java.util.regex.Pattern pattern) {
+        try {
+            FlyoutMenuInfo info = getFlyoutMenuInfo(flyoutPanel, 0);
+            if (info == null) return null;
+            ViewGroup menu = info.menuContainer();
+            for (int i = 0, n = menu.getChildCount(); i < n; i++) {
+                View row = menu.getChildAt(i);
+                if (mod69RowMatches(row, pattern, 0)) return row;
+            }
+        } catch (Exception ex) {
+            Logger.printException(() -> "findFlyoutItem failure", ex);
+        }
+        return null;
+    }
+
+    private static boolean mod69RowMatches(View v, java.util.regex.Pattern p, int depth) {
+        if (depth > 6) return false;
+        if (v instanceof TextView tv && tv.getText() != null && p.matcher(tv.getText().toString()).find()) return true;
+        CharSequence cd = v.getContentDescription();
+        if (cd != null && p.matcher(cd.toString()).find()) return true;
+        if (v instanceof ViewGroup g) {
+            for (int i = 0, n = g.getChildCount(); i < n; i++) {
+                if (mod69RowMatches(g.getChildAt(i), p, depth + 1)) return true;
+            }
+        }
+        return false;
+    }
+
     public static void dismissFlyout() {
         if (flyoutDialog != null) {
             flyoutDialog.dismiss();

@@ -14,6 +14,8 @@ class ShortsPlayerState {
                 isOpen = open
                 Logger.printDebug { "ShortsPlayerState open changed to: $isOpen" }
                 onChange(open)
+                // 69 mod
+                app.morphe.extension.youtube.shorts69.ShortsSaveButton.onShortsOpen(open)
             }
         }
 

@@ -421,6 +421,10 @@ Reports are public and are reviewed before a channel is added to a list. Removal
     <string name="morphe_block_channel_posts_summary">Posts of blocked channels are hidden too</string>
     <string name="morphe_shorts_skip_after_block_title">Skip Short after blocking</string>
     <string name="morphe_shorts_skip_after_block_summary">Blocking the channel of a Short moves to the next Short</string>
+    <string name="morphe_shorts_block_dont_recommend_title">Block in Shorts = \"Don\'t recommend channel\"</string>
+    <string name="morphe_shorts_block_dont_recommend_summary">Blocking a channel from the Shorts menu also presses YouTube\'s own \"Don\'t recommend channel\", so its Shorts stop coming</string>
+    <string name="morphe_shorts_save_button_title">Save button on Shorts</string>
+    <string name="morphe_shorts_save_button_summary">Shows a Save button above the Shorts buttons to save the Short to your playlists</string>
     <string name="morphe_download_post_images_flyout_title">Download post images in flyout menu</string>
     <string name="morphe_download_comment_images_flyout_title">Download comment images in flyout menu</string>
     <string name="morphe_download_comment_images_flyout_summary">Adds \"Download comment image\" to the 3-dot menu of a comment with an image. Saved straight into the download folder</string>

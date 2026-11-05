@@ -37,7 +37,9 @@ val blockListPatch = bytecodePatch(
             SwitchPreference("morphe_block_list_flyout_menu", summary = true),
             SwitchPreference("morphe_block_channel_posts", summary = true),
             SwitchPreference("morphe_block_in_comments", summary = true),
-            SwitchPreference("morphe_shorts_skip_after_block", summary = true)
+            SwitchPreference("morphe_shorts_skip_after_block", summary = true),
+            SwitchPreference("morphe_shorts_block_dont_recommend", summary = true),
+            SwitchPreference("morphe_shorts_save_button", summary = true)
         )
 
         addLithoFilter(FILTER_CLASS)

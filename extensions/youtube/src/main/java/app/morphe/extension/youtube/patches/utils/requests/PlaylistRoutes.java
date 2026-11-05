@@ -146,6 +146,44 @@ public final class PlaylistRoutes {
         return new byte[0];
     }
 
+    /** 69 mod: playlists of the user, each marked if it already has [videoId]. */
+    public static byte[] mod69PlaylistsForVideoBody(String videoId) {
+        try {
+            JSONObject body = getBaseContentJson();
+            JSONArray ids = new JSONArray();
+            ids.put(videoId);
+            body.put("videoIds", ids);
+            body.put("excludeWatchLater", false);
+            return body.toString().getBytes(StandardCharsets.UTF_8);
+        } catch (JSONException ex) {
+            Logger.printException(() -> "mod69PlaylistsForVideoBody failed", ex);
+        }
+        return new byte[0];
+    }
+
+    /** 69 mod: add [videoId] to a playlist, or remove it again. */
+    public static byte[] mod69EditBody(String videoId, String playlistId, boolean remove) {
+        try {
+            JSONObject body = getBaseContentJson();
+            body.put("playlistId", playlistId);
+            JSONObject action = new JSONObject();
+            if (remove) {
+                action.put("action", "ACTION_REMOVE_VIDEO_BY_VIDEO_ID");
+                action.put("removedVideoId", videoId);
+            } else {
+                action.put("action", "ACTION_ADD_VIDEO");
+                action.put("addedVideoId", videoId);
+            }
+            JSONArray actions = new JSONArray();
+            actions.put(action);
+            body.put("actions", actions);
+            return body.toString().getBytes(StandardCharsets.UTF_8);
+        } catch (JSONException ex) {
+            Logger.printException(() -> "mod69EditBody failed", ex);
+        }
+        return new byte[0];
+    }
+
     public static byte[] getPlaylistsBody(String playlistId) {
         try {
             JSONObject body = getBaseContentJson();

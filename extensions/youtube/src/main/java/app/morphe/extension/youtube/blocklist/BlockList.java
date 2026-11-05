@@ -239,11 +239,69 @@ public final class BlockList {
             } else {
                 add(list, name, cid);
                 showUndo(list, name, cid);
+                // 69 mod: in Shorts also press YouTube's own "Don't recommend channel"
+                if (dontRecommendInShorts(panel, list)) {
+                    BlockListFileSync.syncSoon();
+                    return;
+                }
                 afterBlock(list, name);
             }
             BlockListFileSync.syncSoon();
             FlyoutUtils.dismissFlyout();
         }, index);
+    }
+
+    /** "Don't recommend channel" in many languages (YouTube's own menu text). */
+    private static final java.util.regex.Pattern DONT_RECOMMEND = java.util.regex.Pattern.compile(
+            "(?i)(recommend.*channel|channel.*recommend|đề xuất kênh|recomendar.*canal|recomendes.*canal|"
+                    + "empfehl.*kanal|kanal.*empfehl|recommander.*chaîne|consigliare.*canale|kanał.*polec|"
+                    + "polec.*kanał|рекомендовать.*канал|канал.*рекоменд|kanal.*öner|öner.*kanal|"
+                    + "チャンネルをおすすめに表示しない|频道.*推荐|推荐.*频道|頻道.*推薦|推薦.*頻道|채널.*추천|"
+                    + "jangan rekomendasikan saluran|อย่าแนะนำช่อง|kanaal.*aanbevelen|aanbevelen.*kanaal|"
+                    + "nie polecaj kanału|não recomendar canal|no recomendar canal)");
+
+    /**
+     * Presses YouTube's own "Don't recommend channel" row of the open Shorts menu.
+     * YouTube then stops showing the channel; afterwards the next Short starts.
+     * Returns false when it is not a Shorts menu or the row is missing (then the normal block runs).
+     */
+    private static boolean dontRecommendInShorts(Object panel, String list) {
+        try {
+            if (!list.equals(BlockListSync.CHANNELS)) return false;
+            if (!app.morphe.extension.youtube.shared.ShortsPlayerState.isOpen()) return false;
+            if (!Settings.SHORTS_BLOCK_DONT_RECOMMEND.get()) return false;
+            android.view.View row = FlyoutUtils.findFlyoutItem(panel, DONT_RECOMMEND);
+            if (row == null) {
+                Logger.printDebug(() -> "Don't recommend row not found");
+                return false;
+            }
+            String before = app.morphe.extension.youtube.patches.VideoInformation.getVideoId();
+            android.view.View target = clickable(row, 0);
+            (target != null ? target : row).performClick();
+            // YouTube may move on by itself; if it does not, go to the next Short.
+            Utils.runOnMainThreadDelayed(() -> {
+                String now = app.morphe.extension.youtube.patches.VideoInformation.getVideoId();
+                if (before != null && before.equals(now)) {
+                    FlyoutUtils.dismissFlyout();
+                    app.morphe.extension.youtube.gestures.ShortsSkip.next();
+                }
+            }, 900);
+            return true;
+        } catch (Exception ex) {
+            Logger.printException(() -> "dontRecommendInShorts failure", ex);
+            return false;
+        }
+    }
+
+    private static android.view.View clickable(android.view.View v, int depth) {
+        if (v.isClickable() && v.hasOnClickListeners()) return v;
+        if (depth < 6 && v instanceof android.view.ViewGroup g) {
+            for (int i = 0; i < g.getChildCount(); i++) {
+                android.view.View c = clickable(g.getChildAt(i), depth + 1);
+                if (c != null) return c;
+            }
+        }
+        return null;
     }
 
     private static void afterBlock(String list, String name) {
