@@ -1070,4 +1070,52 @@
         <item>SHARP</item>
         <item>CUSTOM</item>
     </string-array>
+    <string-array name="morphe_feed_swipe_left_action_entries" translatable="false">
+        <item>Do nothing</item>
+        <item>Hide the video</item>
+        <item>Block the channel</item>
+        <item>Open the 3-dot menu</item>
+    </string-array>
+    <string-array name="morphe_feed_swipe_left_action_entry_values" translatable="false">
+        <item>none</item>
+        <item>hide</item>
+        <item>block</item>
+        <item>menu</item>
+    </string-array>
+    <string-array name="morphe_feed_swipe_right_action_entries" translatable="false">
+        <item>Do nothing</item>
+        <item>Hide the video</item>
+        <item>Block the channel</item>
+        <item>Open the 3-dot menu</item>
+    </string-array>
+    <string-array name="morphe_feed_swipe_right_action_entry_values" translatable="false">
+        <item>none</item>
+        <item>hide</item>
+        <item>block</item>
+        <item>menu</item>
+    </string-array>
+    <string-array name="morphe_feed_swipe_edge_entries" translatable="false">
+        <item>Anywhere on the video</item>
+        <item>Outer 15% of each side</item>
+        <item>Outer 25% of each side</item>
+        <item>Outer 35% of each side</item>
+    </string-array>
+    <string-array name="morphe_feed_swipe_edge_entry_values" translatable="false">
+        <item>0</item>
+        <item>15</item>
+        <item>25</item>
+        <item>35</item>
+    </string-array>
+    <string-array name="morphe_feed_long_press_time_entries" translatable="false">
+        <item>0.4 seconds</item>
+        <item>0.6 seconds</item>
+        <item>0.8 seconds</item>
+        <item>1 second</item>
+    </string-array>
+    <string-array name="morphe_feed_long_press_time_entry_values" translatable="false">
+        <item>400</item>
+        <item>600</item>
+        <item>800</item>
+        <item>1000</item>
+    </string-array>
 </resources>

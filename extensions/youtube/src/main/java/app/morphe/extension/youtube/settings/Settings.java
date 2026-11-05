@@ -180,6 +180,13 @@ public class Settings extends SharedYouTubeSettings {
     public static final StringSetting DOWNLOAD_FOLDER_URI = new StringSetting("morphe_download_folder_uri", "", false);
     public static final BooleanSetting FEED_LONG_PRESS_MENU = new BooleanSetting("morphe_feed_long_press_menu", TRUE);
     public static final BooleanSetting FEED_SWIPE_GESTURES = new BooleanSetting("morphe_feed_swipe_gestures", TRUE);
+    /** 69 mod: what each swipe does: none / hide / block / menu. */
+    public static final StringSetting FEED_SWIPE_LEFT_ACTION = new StringSetting("morphe_feed_swipe_left_action", "hide");
+    public static final StringSetting FEED_SWIPE_RIGHT_ACTION = new StringSetting("morphe_feed_swipe_right_action", "block");
+    /** Swipe only when it starts this close (in % of the width) to the left/right edge of the item; "0" = anywhere. */
+    public static final StringSetting FEED_SWIPE_EDGE = new StringSetting("morphe_feed_swipe_edge", "0");
+    /** How long to hold before the 3-dot menu opens, in ms. */
+    public static final StringSetting FEED_LONG_PRESS_TIME = new StringSetting("morphe_feed_long_press_time", "600");
     public static final StringSetting HIDDEN_VIDEO_TITLES = new StringSetting("morphe_hidden_video_titles", "", false);
     public static final BooleanSetting BLOCK_CHANNEL_POSTS = new BooleanSetting("morphe_block_channel_posts", TRUE);
     public static final BooleanSetting SHORTS_SKIP_AFTER_BLOCK = new BooleanSetting("morphe_shorts_skip_after_block", TRUE);

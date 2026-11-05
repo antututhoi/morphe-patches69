@@ -3,6 +3,7 @@ package app.morphe.patches.youtube.misc.blocklist
 import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.patch.bytecodePatch
+import app.morphe.patches.shared.misc.settings.preference.ListPreference
 import app.morphe.patches.shared.misc.settings.preference.SwitchPreference
 import app.morphe.patches.youtube.misc.extension.sharedExtensionPatch
 import app.morphe.patches.youtube.misc.playertype.playerTypeHookPatch
@@ -33,7 +34,11 @@ val feedGesturesPatch = bytecodePatch(
     execute {
         PreferenceScreen.FEED.addPreferences(
             SwitchPreference("morphe_feed_long_press_menu", summary = true),
-            SwitchPreference("morphe_feed_swipe_gestures", summary = true)
+            ListPreference("morphe_feed_long_press_time"),
+            SwitchPreference("morphe_feed_swipe_gestures", summary = true),
+            ListPreference("morphe_feed_swipe_left_action"),
+            ListPreference("morphe_feed_swipe_right_action"),
+            ListPreference("morphe_feed_swipe_edge")
         )
 
         // Verify the stubbed class is not obfuscated.

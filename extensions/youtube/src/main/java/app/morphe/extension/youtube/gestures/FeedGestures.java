@@ -43,6 +43,10 @@ public final class FeedGestures {
     private static boolean longPressDone;
     private static boolean sendingCancel;
     private static Runnable longPress;
+    // 69 mod: where the item was on screen at the touch, to tell a hold from a scroll
+    private static int downItemY;
+    private static boolean swipeAllowed;
+    private static boolean swiping;
 
     /** Texts of the item touched last; used by the post image download. */
     private static volatile List<String> lastTouchedTexts = java.util.Collections.emptyList();
@@ -69,7 +73,12 @@ public final class FeedGestures {
                 case MotionEvent.ACTION_DOWN: onDown(host, ev); break;
                 case MotionEvent.ACTION_MOVE: onMove(ev); break;
                 case MotionEvent.ACTION_UP: onUp(ev); break;
-                case MotionEvent.ACTION_CANCEL: cancelLongPress(); itemRef = new WeakReference<>(null); break;
+                case MotionEvent.ACTION_CANCEL:
+                    cancelLongPress();
+                    resetSwipe(itemRef.get());
+                    swiping = false;
+                    itemRef = new WeakReference<>(null);
+                    break;
                 default: break;
             }
         } catch (Exception ex) {
@@ -97,36 +106,97 @@ public final class FeedGestures {
         downX = ev.getRawX();
         downY = ev.getRawY();
         downTime = ev.getEventTime();
+        downItemY = screenY(item);
+        swiping = false;
+        // Swipe only from the outer part of the item, if that is set.
+        int edge = parseInt(Settings.FEED_SWIPE_EDGE.get(), 0);
+        if (edge <= 0) {
+            swipeAllowed = true;
+        } else {
+            int[] loc = new int[2];
+            item.getLocationOnScreen(loc);
+            float xIn = ev.getRawX() - loc[0];
+            float zone = item.getWidth() * edge / 100f;
+            swipeAllowed = xIn <= zone || xIn >= item.getWidth() - zone;
+        }
         if (Settings.FEED_LONG_PRESS_MENU.get()) {
             longPress = () -> {
                 View i = itemRef.get();
                 if (i == null) return;
+                // A scroll moves the item even when the finger events stop reaching us.
+                int slop = ViewConfiguration.get(Utils.getContext()).getScaledTouchSlop();
+                if (Math.abs(screenY(i) - downItemY) > slop) return;
                 longPressDone = true;
+                i.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
                 openMenu(i);
             };
-            handler.postDelayed(longPress, ViewConfiguration.getLongPressTimeout() + 80);
+            handler.postDelayed(longPress, Math.max(300, parseInt(Settings.FEED_LONG_PRESS_TIME.get(), 600)));
         }
     }
 
     private static void onMove(MotionEvent ev) {
-        if (itemRef.get() == null) return;
+        View item = itemRef.get();
+        if (item == null) return;
         int slop = ViewConfiguration.get(Utils.getContext()).getScaledTouchSlop();
-        if (Math.abs(ev.getRawX() - downX) > slop || Math.abs(ev.getRawY() - downY) > slop) cancelLongPress();
+        float dx = ev.getRawX() - downX;
+        float dy = ev.getRawY() - downY;
+        if (Math.abs(dx) > slop || Math.abs(dy) > slop) cancelLongPress();
+        // Show the swipe: the item follows the finger and fades once far enough.
+        if (Settings.FEED_SWIPE_GESTURES.get() && swipeAllowed && !longPressDone
+                && (swiping || (Math.abs(dx) > slop * 2 && Math.abs(dy) < Math.abs(dx) * 0.5f))) {
+            String action = dx < 0 ? Settings.FEED_SWIPE_LEFT_ACTION.get() : Settings.FEED_SWIPE_RIGHT_ACTION.get();
+            if ("none".equals(action)) return;
+            swiping = true;
+            item.setTranslationX(dx * 0.6f);
+            item.setAlpha(Math.abs(dx) >= minDistance(item) ? 0.45f : 1f - Math.min(0.4f, Math.abs(dx) / (item.getWidth() * 2f)));
+        }
+    }
+
+    private static float minDistance(View item) {
+        return Math.max(item.getWidth() * 0.3f, 120 * item.getResources().getDisplayMetrics().density);
+    }
+
+    private static void resetSwipe(View item) {
+        if (item == null) return;
+        item.animate().translationX(0f).alpha(1f).setDuration(150).start();
+    }
+
+    private static int screenY(View v) {
+        int[] loc = new int[2];
+        v.getLocationOnScreen(loc);
+        return loc[1];
+    }
+
+    private static int parseInt(String s, int fallback) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (Exception e) {
+            return fallback;
+        }
     }
 
     private static void onUp(MotionEvent ev) {
         cancelLongPress();
         View item = itemRef.get();
         itemRef = new WeakReference<>(null);
-        if (item == null || longPressDone || !Settings.FEED_SWIPE_GESTURES.get()) return;
+        if (item == null) return;
+        boolean wasSwiping = swiping;
+        swiping = false;
+        resetSwipe(item);
+        if (longPressDone || !Settings.FEED_SWIPE_GESTURES.get() || !swipeAllowed) return;
         float dx = ev.getRawX() - downX;
         float dy = ev.getRawY() - downY;
-        float minDistance = Math.max(item.getWidth() * 0.3f, 120 * item.getResources().getDisplayMetrics().density);
-        if (Math.abs(dx) < minDistance || Math.abs(dy) > Math.abs(dx) * 0.5f || ev.getEventTime() - downTime > 1000) {
+        if (Math.abs(dx) < minDistance(item) || Math.abs(dy) > Math.abs(dx) * 0.5f
+                || (!wasSwiping && ev.getEventTime() - downTime > 1000)) {
             return;
         }
-        if (dx < 0) hideVideo(item);
-        else blockChannel(item);
+        String action = dx < 0 ? Settings.FEED_SWIPE_LEFT_ACTION.get() : Settings.FEED_SWIPE_RIGHT_ACTION.get();
+        switch (action) {
+            case "hide": hideVideo(item); break;
+            case "block": blockChannel(item); break;
+            case "menu": openMenu(item); break;
+            default: break;
+        }
     }
 
     private static void cancelLongPress() {
