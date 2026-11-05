@@ -424,6 +424,8 @@ Reports are public and are reviewed before a channel is added to a list. Removal
     <string name="morphe_shorts_block_dont_recommend_title">Block in Shorts = \"Don\'t recommend channel\"</string>
     <string name="morphe_shorts_block_dont_recommend_summary">Blocking a channel from the Shorts menu also presses YouTube\'s own \"Don\'t recommend channel\", so its Shorts stop coming</string>
     <string name="morphe_shorts_save_button_title">Save button on Shorts</string>
+    <string name="morphe_shorts_download_button_title">Download button on Shorts</string>
+    <string name="morphe_shorts_download_button_summary">Shows a Download button above the Shorts buttons that opens your external downloader (set in Video player → Downloads)</string>
     <string name="morphe_shorts_save_button_summary">Shows a Save button above the Shorts buttons to save the Short to your playlists</string>
     <string name="morphe_download_post_images_flyout_title">Download post images in flyout menu</string>
     <string name="morphe_download_comment_images_flyout_title">Download comment images in flyout menu</string>
@@ -498,8 +500,8 @@ Reports are public and are reviewed before a channel is added to a list. Removal
     <string name="morphe_copy_video_title_title">Copy video title</string>
     <string name="morphe_copy_video_title_summary">Tap and hold the title of the video to copy it</string>
     <string name="morphe_copy_video_title_success">Video title copied to clipboard</string>
-    <string name="morphe_copy_comments_title">Copy comments</string>
-    <string name="morphe_copy_comments_summary">Tap and hold a comment to copy it</string>
+    <string name="morphe_copy_comments_title">Copy comments and posts</string>
+    <string name="morphe_copy_comments_summary">Tap and hold a comment, description or community post to copy it (or select part of it, with the select-text dialog on)</string>
     <string name="morphe_copy_comments_success">Comment copied to clipboard</string>
 
     <!-- layout.hide.signintotv.disableSignInToTVPopupPatch -->

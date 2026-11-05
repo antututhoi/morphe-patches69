@@ -41,28 +41,66 @@ public final class FullscreenProgressBar {
 
             SeekBar seekBar = new SeekBar(activity);
             seekBar.setMax(1000);
-            seekBar.setPadding((int) (12 * density), 0, (int) (12 * density), 0);
+            // 69 mod: looks like YouTube's own thin progress bar: edge to edge, red over a light track,
+            // the round handle only shows while you drag.
+            seekBar.setPadding(0, 0, 0, 0);
             int red = Color.parseColor("#FF0033");
-            seekBar.setProgressTintList(ColorStateList.valueOf(red));
-            seekBar.setThumbTintList(ColorStateList.valueOf(red));
-            seekBar.setProgressBackgroundTintList(ColorStateList.valueOf(Color.argb(110, 255, 255, 255)));
+            android.graphics.drawable.GradientDrawable track = new android.graphics.drawable.GradientDrawable();
+            track.setColor(Color.argb(90, 255, 255, 255));
+            android.graphics.drawable.GradientDrawable played = new android.graphics.drawable.GradientDrawable();
+            played.setColor(red);
+            android.graphics.drawable.LayerDrawable layers = new android.graphics.drawable.LayerDrawable(
+                    new android.graphics.drawable.Drawable[]{
+                            track,
+                            new android.graphics.drawable.ClipDrawable(played, Gravity.START,
+                                    android.graphics.drawable.ClipDrawable.HORIZONTAL)
+                    });
+            layers.setId(0, android.R.id.background);
+            layers.setId(1, android.R.id.progress);
+            seekBar.setProgressDrawable(layers);
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                seekBar.setMinHeight((int) (3 * density));
+                seekBar.setMaxHeight((int) (3 * density));
+            }
+            android.graphics.drawable.GradientDrawable thumb = new android.graphics.drawable.GradientDrawable();
+            thumb.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            thumb.setColor(red);
+            thumb.setSize((int) (13 * density), (int) (13 * density));
+            thumb.setAlpha(0);
+            seekBar.setThumb(thumb);
+            seekBar.setThumbOffset(0);
+            seekBar.setSplitTrack(false);
             seekBar.setVisibility(View.GONE);
             seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                 @Override
                 public void onProgressChanged(SeekBar s, int progress, boolean fromUser) {}
 
                 @Override
-                public void onStartTrackingTouch(SeekBar s) { dragging = true; }
+                public void onStartTrackingTouch(SeekBar s) {
+                    dragging = true;
+                    s.getThumb().setAlpha(255);
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {
+                        s.setMinHeight((int) (5 * density));
+                        s.setMaxHeight((int) (5 * density));
+                    }
+                }
 
                 @Override
                 public void onStopTrackingTouch(SeekBar s) {
                     dragging = false;
+                    s.getThumb().setAlpha(0);
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {
+                        s.setMinHeight((int) (3 * density));
+                        s.setMaxHeight((int) (3 * density));
+                    }
                     long length = VideoInformation.getVideoLength();
                     if (length > 0) VideoInformation.seekTo(length * s.getProgress() / 1000);
                 }
             });
+            // a 26dp touch zone whose middle (where the thin bar is drawn) sits at the very bottom edge
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, (int) (28 * density), Gravity.BOTTOM);
+                    ViewGroup.LayoutParams.MATCH_PARENT, (int) (26 * density), Gravity.BOTTOM);
+            lp.bottomMargin = -(int) (11 * density);
             decor.addView(seekBar, lp);
             bar = seekBar;
 

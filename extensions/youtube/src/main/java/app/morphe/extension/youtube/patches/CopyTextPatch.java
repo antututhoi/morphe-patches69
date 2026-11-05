@@ -145,6 +145,14 @@ public final class CopyTextPatch {
                         commentTexts.put(comment, Boolean.TRUE);
                     }
                 }
+            } else if (COPY_COMMENTS && isPostText(contextInterface)) {
+                // 69 mod: community post text can be held to select / copy it too
+                String post = text.toString().trim();
+                if (post.length() >= 2) {
+                    synchronized (commentTexts) {
+                        commentTexts.put(post, Boolean.TRUE);
+                    }
+                }
             } else if (COPY_COMMENTS && isDescriptionText(contextInterface)) {
                 String description = text.toString().trim();
                 if (description.length() >= 20) {
@@ -159,6 +167,17 @@ public final class CopyTextPatch {
             Logger.printException(() -> "onLithoTextLoaded failure", ex);
         }
         return text;
+    }
+
+    /** 69 mod: the text of a community post (all post types). */
+    private static boolean isPostText(ContextInterface contextInterface) {
+        StringBuilder path = contextInterface.patch_getPathBuilder();
+        if (path == null || !Utils.endsWith(path, "|TextType|")) return false;
+        String p = path.toString();
+        if (!(p.contains("_post_root") || p.contains("_post_responsive_root") || p.contains("post_base_wrapper")
+                || p.contains("_post_slim") || p.contains("backstage"))) return false;
+        // leave out the channel name / time / buttons line of the post header and footer
+        return !(p.contains("header") || p.contains("toolbar") || p.contains("button") || p.contains("action_bar"));
     }
 
     /** Best effort: text of the video description panel. */

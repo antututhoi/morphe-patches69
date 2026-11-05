@@ -40,7 +40,7 @@ public final class ShortsSaveButton {
     /** Called when the Shorts player opens or closes. */
     public static void onShortsOpen(boolean open) {
         try {
-            if (!Settings.SHORTS_SAVE_BUTTON.get()) return;
+            if (!Settings.SHORTS_SAVE_BUTTON.get() && !Settings.SHORTS_DOWNLOAD_BUTTON.get()) return;
             Utils.runOnMainThread(() -> {
                 if (open) {
                     if (!running) {
@@ -75,6 +75,36 @@ public final class ShortsSaveButton {
         return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, a.getResources().getDisplayMetrics());
     }
 
+    private static LinearLayout item(Activity a, String label, String[] icons, View.OnClickListener click) {
+        LinearLayout b = new LinearLayout(a);
+        b.setOrientation(LinearLayout.VERTICAL);
+        b.setGravity(Gravity.CENTER_HORIZONTAL);
+        ImageView icon = new ImageView(a);
+        Drawable d = null;
+        for (String name : icons) {
+            d = ResourceUtils.getDrawable(name);
+            if (d != null) break;
+        }
+        if (d != null) {
+            d = d.mutate();
+            d.setTint(Color.WHITE);
+            icon.setImageDrawable(d);
+        }
+        int s = dp(a, 30);
+        icon.setLayoutParams(new LinearLayout.LayoutParams(s, s));
+        TextView text = new TextView(a);
+        text.setText(label);
+        text.setTextColor(Color.WHITE);
+        text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        text.setShadowLayer(4, 0, 1, 0xAA000000);
+        b.addView(icon);
+        b.addView(text);
+        b.setPadding(dp(a, 6), dp(a, 6), dp(a, 6), dp(a, 6));
+        b.setOnClickListener(click);
+        return b;
+    }
+
+    /** Download (external downloader) and Save buttons, stacked. */
     private static LinearLayout button(Activity a) {
         LinearLayout b = buttonRef.get();
         if (b != null && b.getContext() == a && b.getParent() != null) return b;
@@ -83,29 +113,21 @@ public final class ShortsSaveButton {
         b = new LinearLayout(a);
         b.setOrientation(LinearLayout.VERTICAL);
         b.setGravity(Gravity.CENTER_HORIZONTAL);
-        ImageView icon = new ImageView(a);
-        Drawable d = ResourceUtils.getDrawable("yt_outline_experimental_bookmark_vd_theme_24");
-        if (d == null) d = ResourceUtils.getDrawable("yt_outline_bookmark_black_24");
-        if (d != null) {
-            d = d.mutate();
-            d.setTint(Color.WHITE);
-            icon.setImageDrawable(d);
+        if (Settings.SHORTS_DOWNLOAD_BUTTON.get()) {
+            b.addView(item(a, "Download", new String[]{
+                    "yt_outline_experimental_download_vd_theme_24", "yt_outline_download_black_24"
+            }, v -> {
+                String id = VideoInformation.getVideoId();
+                if (id == null || id.isEmpty()) return;
+                app.morphe.extension.shared.settings.preference.ExternalDownloaderPreference
+                        .launchExternalDownloader(id, v.getContext(), "https://youtube.com/shorts/" + id);
+            }));
         }
-        int s = dp(a, 30);
-        icon.setLayoutParams(new LinearLayout.LayoutParams(s, s));
-        icon.setElevation(dp(a, 2));
-        TextView label = new TextView(a);
-        label.setText("Save");
-        label.setTextColor(Color.WHITE);
-        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        label.setShadowLayer(4, 0, 1, 0xAA000000);
-        b.addView(icon);
-        b.addView(label);
-        b.setPadding(dp(a, 6), dp(a, 6), dp(a, 6), dp(a, 6));
-        b.setOnClickListener(v -> {
-            String id = VideoInformation.getVideoId();
-            ShortsSaveDialog.show(a, id);
-        });
+        if (Settings.SHORTS_SAVE_BUTTON.get()) {
+            b.addView(item(a, "Save", new String[]{
+                    "yt_outline_experimental_bookmark_vd_theme_24", "yt_outline_bookmark_black_24"
+            }, v -> ShortsSaveDialog.show(a, VideoInformation.getVideoId())));
+        }
         b.setVisibility(View.GONE);
         content.addView(b, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
