@@ -184,141 +184,135 @@ public final class FeedItems {
         });
     }
 
-    // ---------------- 69 mod: "Blocked X · tap to undo" placeholder ----------------
+    // ---------------- 69 mod: "Blocked X   UNDO" placeholder ----------------
+    // Only plain View methods are used on the feed list: YouTube renames RecyclerView's own methods.
 
     private static final int TAG_PLACEHOLDER = 0x69690002;
-    private static final java.util.Map<View, Runnable> undoOf = new java.util.WeakHashMap<>();
-    private static final java.util.Set<RecyclerView> watched =
+    private static final java.util.Set<View> watched =
             java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     /** Channels blocked in this session: their items stay placeholders when scrolled back to. */
     private static final java.util.Map<String, Runnable> sessionBlocked = new java.util.LinkedHashMap<>();
+    private static final java.util.Map<View, String> labelOf = new java.util.WeakHashMap<>();
 
-    /** A dark bar with the text, drawn over the shrunken item. */
-    private static final class BarDrawable extends android.graphics.drawable.Drawable {
-        final android.graphics.Paint bg = new android.graphics.Paint(), fg = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        final String text;
-        final float d;
-
-        BarDrawable(String text, float density) {
-            this.text = text;
-            this.d = density;
-            bg.setColor(0xFF212121);
-            fg.setColor(0xFFE0E0E0);
-            fg.setTextSize(14 * density);
-        }
-
-        @Override
-        public void draw(android.graphics.Canvas c) {
-            android.graphics.Rect b = getBounds();
-            c.drawRect(b, bg);
-            float y = b.centerY() - (fg.descent() + fg.ascent()) / 2;
-            c.drawText(text, b.left + 16 * d, y, fg);
-            android.graphics.Paint u = new android.graphics.Paint(fg);
-            u.setColor(0xFF3EA6FF);
-            u.setFakeBoldText(true);
-            String undo = "UNDO";
-            c.drawText(undo, b.right - 16 * d - u.measureText(undo), y, u);
-        }
-
-        @Override public void setAlpha(int alpha) {}
-        @Override public void setColorFilter(@Nullable android.graphics.ColorFilter cf) {}
-        @Override public int getOpacity() { return android.graphics.PixelFormat.OPAQUE; }
-    }
-
-    /** Shrinks the item to a bar "Blocked X   UNDO"; tapping it runs [onUndo] and shows the item again. */
+    /** Shrinks the item and lays a bar "Blocked X   UNDO" over it; tapping the bar runs [onUndo]. */
     public static void placeholder(View item, String text, Runnable onUndo) {
         if (item.getTag(TAG_PLACEHOLDER) != null) return;
+        Activity a = Utils.getActivity();
+        if (a == null) return;
+        ViewGroup content = a.findViewById(android.R.id.content);
+        if (content == null) return;
         ViewGroup.LayoutParams lp = item.getLayoutParams();
         if (lp == null) return;
         final int oldHeight = lp.height;
         float d = item.getResources().getDisplayMetrics().density;
-        BarDrawable bar = new BarDrawable(text, d);
-        Runnable restore = () -> {
-            item.getOverlay().remove(bar);
+        final int barH = (int) (52 * d);
+
+        android.widget.LinearLayout bar = new android.widget.LinearLayout(a);
+        bar.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        bar.setBackgroundColor(0xFF212121);
+        bar.setPadding((int) (16 * d), 0, (int) (8 * d), 0);
+        bar.setClickable(true);
+        TextView t = new TextView(a);
+        t.setText(text);
+        t.setTextColor(0xFFE0E0E0);
+        t.setTextSize(14);
+        t.setMaxLines(1);
+        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        bar.addView(t, new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+        TextView undo = new TextView(a);
+        undo.setText("UNDO");
+        undo.setTextColor(0xFF3EA6FF);
+        undo.setTypeface(undo.getTypeface(), android.graphics.Typeface.BOLD);
+        undo.setPadding((int) (12 * d), (int) (10 * d), (int) (12 * d), (int) (10 * d));
+        bar.addView(undo);
+        content.addView(bar, new android.widget.FrameLayout.LayoutParams(1, barH));
+
+        final int[] loc = new int[2], base = new int[2];
+        final android.view.ViewTreeObserver.OnPreDrawListener[] follow = new android.view.ViewTreeObserver.OnPreDrawListener[1];
+        final Runnable[] restore = new Runnable[1];
+        follow[0] = () -> {
+            if (!item.isAttachedToWindow() || item.getTag(TAG_PLACEHOLDER) != restore[0]) {
+                bar.setVisibility(View.GONE);
+                return true;
+            }
+            item.getLocationInWindow(loc);
+            content.getLocationInWindow(base);
+            boolean shown = item.isShown() && item.getWidth() > 0;
+            // only while fully inside the list (not over the top bar / bottom bar)
+            if (shown && item.getParent() instanceof View) {
+                View list = (View) item.getParent();
+                int[] l = new int[2];
+                list.getLocationInWindow(l);
+                shown = loc[1] >= l[1] && loc[1] + barH <= l[1] + list.getHeight();
+            }
+            bar.setVisibility(shown ? View.VISIBLE : View.GONE);
+            ViewGroup.LayoutParams blp = bar.getLayoutParams();
+            if (blp.width != item.getWidth()) {
+                blp.width = item.getWidth();
+                bar.setLayoutParams(blp);
+            }
+            float x = loc[0] - base[0], y = loc[1] - base[1];
+            if (bar.getX() != x) bar.setX(x);
+            if (bar.getY() != y) bar.setY(y);
+            return true;
+        };
+        restore[0] = () -> {
+            item.getViewTreeObserver().removeOnPreDrawListener(follow[0]);
+            if (bar.getParent() instanceof ViewGroup) ((ViewGroup) bar.getParent()).removeView(bar);
             ViewGroup.LayoutParams p = item.getLayoutParams();
             if (p != null) {
                 p.height = oldHeight;
                 item.setLayoutParams(p);
             }
             item.setTag(TAG_PLACEHOLDER, null);
-            undoOf.remove(item);
         };
-        item.setTag(TAG_PLACEHOLDER, restore);
-        lp.height = (int) (52 * d);
-        item.setLayoutParams(lp);
-        item.getOverlay().add(bar);
-        View.OnLayoutChangeListener sizer = (v, l, t, r, b, ol, ot, or, ob) -> bar.setBounds(0, 0, r - l, b - t);
-        item.addOnLayoutChangeListener(sizer);
-        bar.setBounds(0, 0, item.getWidth(), (int) (52 * d));
-        undoOf.put(item, () -> {
-            restore.run();
+        item.setTag(TAG_PLACEHOLDER, restore[0]);
+        bar.setOnClickListener(v -> {
+            restore[0].run();
             onUndo.run();
         });
+        lp.height = barH;
+        item.setLayoutParams(lp);
+        item.getViewTreeObserver().addOnPreDrawListener(follow[0]);
         item.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
             @Override public void onViewAttachedToWindow(View v) {}
 
             @Override
             public void onViewDetachedFromWindow(View v) {
+                // recycled for another item: give the view back
                 v.removeOnAttachStateChangeListener(this);
-                v.removeOnLayoutChangeListener(sizer);
-                if (v.getTag(TAG_PLACEHOLDER) == restore) restore.run();
+                if (v.getTag(TAG_PLACEHOLDER) == restore[0]) restore[0].run();
             }
         });
-        RecyclerView rv = parentList(item);
+        View rv = item.getParent() instanceof View ? (View) item.getParent() : null;
         if (rv != null) watch(rv);
     }
 
-    /** Taps on a placeholder undo; items of channels blocked now become placeholders again when they come back. */
-    private static void watch(RecyclerView rv) {
-        if (!watched.add(rv)) return;
-        rv.addOnItemTouchListener(new RecyclerView.OnItemTouchListener() {
-            float x, y;
-
-            @Override
-            public boolean onInterceptTouchEvent(RecyclerView r, android.view.MotionEvent e) {
-                if (undoOf.isEmpty()) return false;
-                if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
-                    x = e.getX();
-                    y = e.getY();
-                    View c = r.findChildViewUnder(x, y);
-                    return c != null && undoOf.containsKey(c);
-                }
-                return false;
+    /** Items of channels blocked now become placeholders again when they come back on screen. */
+    private static void watch(View rv) {
+        if (!watched.add(rv) || !(rv instanceof ViewGroup)) return;
+        ViewGroup g = (ViewGroup) rv;
+        rv.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+            if (sessionBlocked.isEmpty() || !g.isAttachedToWindow()) return;
+            for (int i = 0, n = g.getChildCount(); i < n; i++) {
+                View child = g.getChildAt(i);
+                if (child != null && child.getTag(TAG_PLACEHOLDER) == null) recheck(child);
             }
-
-            @Override
-            public void onTouchEvent(RecyclerView r, android.view.MotionEvent e) {
-                if (e.getActionMasked() != android.view.MotionEvent.ACTION_UP) return;
-                float slop = 12 * r.getResources().getDisplayMetrics().density;
-                if (Math.abs(e.getX() - x) > slop || Math.abs(e.getY() - y) > slop) return;
-                View c = r.findChildViewUnder(e.getX(), e.getY());
-                Runnable u = c == null ? null : undoOf.get(c);
-                if (u != null) u.run();
-            }
-
-            @Override public void onRequestDisallowInterceptTouchEvent(boolean disallow) {}
-        });
-        rv.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
-            @Override
-            public void onChildViewAttachedToWindow(View child) {
-                if (sessionBlocked.isEmpty()) return;
-                // the item draws its content right after attaching
-                child.postDelayed(() -> recheck(child), 60);
-            }
-
-            @Override public void onChildViewDetachedFromWindow(View child) {}
         });
     }
 
     private static void recheck(View child) {
-        if (child.getParent() == null || child.getTag(TAG_PLACEHOLDER) != null) return;
         List<String> t = texts(child);
+        if (t.isEmpty()) return;
         for (java.util.Map.Entry<String, Runnable> e : new ArrayList<>(sessionBlocked.entrySet())) {
             String name = e.getKey();
             for (String s : t) {
                 if (s.toLowerCase(Locale.ROOT).contains(name)) {
                     labelOf.put(child, name);
-                    placeholder(child, "Blocked " + name, e.getValue());
+                    View c = child;
+                    // not during the layout pass
+                    Utils.runOnMainThread(() -> placeholder(c, "Blocked " + name, e.getValue()));
                     return;
                 }
             }
@@ -336,11 +330,10 @@ public final class FeedItems {
             }
             onUndo.run();
             // show every placeholder of this channel again
-            for (java.util.Map.Entry<View, Runnable> e : new ArrayList<>(undoOf.entrySet())) {
+            for (java.util.Map.Entry<View, String> e : new ArrayList<>(labelOf.entrySet())) {
+                if (!name.equals(e.getValue())) continue;
                 Object tag = e.getKey().getTag(TAG_PLACEHOLDER);
-                if (tag instanceof Runnable && labelOf.get(e.getKey()) != null && labelOf.get(e.getKey()).equals(name)) {
-                    ((Runnable) tag).run();
-                }
+                if (tag instanceof Runnable) ((Runnable) tag).run();
             }
         };
         if (!onlyLive) {
@@ -377,6 +370,4 @@ public final class FeedItems {
         }
         return n;
     }
-
-    private static final java.util.Map<View, String> labelOf = new java.util.WeakHashMap<>();
 }
