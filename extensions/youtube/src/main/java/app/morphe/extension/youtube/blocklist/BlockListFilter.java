@@ -121,37 +121,35 @@ public final class BlockListFilter extends Filter {
             if (p.contains(skip)) return false;
         }
 
+        // 69 mod: every list is checked in one pass over the buffer (was one pass per channel / title)
         List<BlockList.Target> channels = BlockList.getChannels();
+        FastMatcher ch = BlockList.channelsMatcher();
 
         if (matchedGroup == comments) {
             app.morphe.extension.youtube.download.PostImages.onCommentBuffer(buffer, asciiStrings.getStrings());
             // Only by channel id: a name could also be written inside someone else's comment.
             if (!Settings.BLOCK_IN_COMMENTS.get()) return false;
-            for (BlockList.Target t : channels) {
-                if (t.cidBytes != null && FlyoutUtils.byteIndexOf(buffer, t.cidBytes) >= 0) return true;
-            }
-            return false;
+            return ch.matchesId(buffer);
         }
         if (matchedGroup == posts) {
             app.morphe.extension.youtube.download.PostImages.onPostBuffer(buffer, asciiStrings.getStrings());
-            List<BlockList.Target> postOnly = BlockList.getPosts();
-            if (!postOnly.isEmpty() && matches(postOnly, accessibility, buffer)) return true;
-            return Settings.BLOCK_CHANNEL_POSTS.get() && !channels.isEmpty() && matches(channels, accessibility, buffer);
+            if (matches(BlockList.getPosts(), BlockList.postsMatcher(), accessibility, buffer)) return true;
+            return Settings.BLOCK_CHANNEL_POSTS.get() && matches(channels, ch, accessibility, buffer);
         }
         if (matchedGroup == shortsItems) {
-            List<BlockList.Target> shortsOnly = BlockList.getShorts();
-            if (!shortsOnly.isEmpty() && matches(shortsOnly, accessibility, buffer)) return true;
-            return !channels.isEmpty() && matches(channels, accessibility, buffer);
+            // 69 mod: never remove pages inside the Shorts player (that left the player stuck with the
+            // old Short's sound); blocked Shorts there are skipped instead (ShortsSaveButton.onChannel)
+            if (app.morphe.extension.youtube.shared.ShortsPlayerState.isOpen()) return false;
+            if (matches(BlockList.getShorts(), BlockList.shortsMatcher(), accessibility, buffer)) return true;
+            return matches(channels, ch, accessibility, buffer);
         }
 
-        if (!channels.isEmpty() && matches(channels, accessibility, buffer)) return true;
+        if (matches(channels, ch, accessibility, buffer)) return true;
 
-        for (byte[] title : BlockList.getHiddenTitleBytes()) {
-            if (FlyoutUtils.byteIndexOf(buffer, title) >= 0) return true;
-        }
+        if (BlockList.hiddenTitlesMatcher().matches(buffer)) return true;
 
         List<BlockList.Target> live = BlockList.getLive();
-        if (live.isEmpty() || !matches(live, accessibility, buffer)) return false;
+        if (live.isEmpty() || !matches(live, BlockList.liveMatcher(), accessibility, buffer)) return false;
         return liveBuffer.check(buffer).isFiltered() || hasLiveWord(buffer);
     }
 
@@ -162,14 +160,13 @@ public final class BlockListFilter extends Filter {
         return false;
     }
 
-    private static boolean matches(List<BlockList.Target> targets, String accessibility, byte[] buffer) {
-        String acc = accessibility == null ? "" : accessibility.toLowerCase(Locale.ROOT);
+    private static boolean matches(List<BlockList.Target> targets, FastMatcher m, String accessibility, byte[] buffer) {
+        if (targets.isEmpty()) return false;
+        if (m.matches(buffer)) return true;
+        if (accessibility == null || accessibility.isEmpty()) return false;
+        String acc = accessibility.toLowerCase(Locale.ROOT);
         for (BlockList.Target t : targets) {
-            if (t.cidBytes != null && FlyoutUtils.byteIndexOf(buffer, t.cidBytes) >= 0) return true;
-            if (t.nameBytes != null) {
-                if (FlyoutUtils.byteIndexOf(buffer, t.nameBytes) >= 0) return true;
-                if (!acc.isEmpty() && acc.contains(t.nameLower)) return true;
-            }
+            if (t.nameBytes != null && acc.contains(t.nameLower)) return true;
         }
         return false;
     }

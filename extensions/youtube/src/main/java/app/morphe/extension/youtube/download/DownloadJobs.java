@@ -40,6 +40,12 @@ public final class DownloadJobs {
         final Work work;
         final int notificationId;
         volatile boolean cancelled;
+        /** 69 mod: picture for the "done" notification. */
+        volatile android.graphics.Bitmap thumb;
+
+        public void thumbnail(android.graphics.Bitmap b) {
+            if (thumb == null && b != null) thumb = b;
+        }
 
         Job(String key, String title, Work work, int id) {
             this.key = key; this.title = title; this.work = work; this.notificationId = id;
@@ -96,7 +102,7 @@ public final class DownloadJobs {
                 cancelNotification(j.notificationId);
                 if (msg != null) {
                     Utils.runOnMainThread(() -> Utils.showToastLong(msg));
-                    post(j.notificationId, CHANNEL_DONE, j.title + " – done", msg, false, null);
+                    post(j.notificationId, CHANNEL_DONE, j.title + " – done", msg, false, null, j.thumb);
                 }
             } catch (CancelledException ex) {
                 cancelNotification(j.notificationId);
@@ -106,7 +112,7 @@ public final class DownloadJobs {
                     failed.put(j.key, j);
                 }
                 String text = String.valueOf(ex.getMessage() == null ? ex : ex.getMessage());
-                post(j.notificationId, CHANNEL_FAIL, j.title + " – failed", text, true, j.key);
+                post(j.notificationId, CHANNEL_FAIL, j.title + " – failed", text, true, j.key, null);
                 Utils.runOnMainThread(() -> Utils.showToastLong("Download failed. Tap Retry in the notification"));
             } finally {
                 synchronized (running) {
@@ -175,7 +181,8 @@ public final class DownloadJobs {
         }
     }
 
-    private static void post(int id, String channel, String title, String text, boolean error, String retryKey) {
+    private static void post(int id, String channel, String title, String text, boolean error, String retryKey,
+                             android.graphics.Bitmap thumb) {
         try {
             Context c = Utils.getContext();
             NotificationManager nm = manager(c);
@@ -187,6 +194,11 @@ public final class DownloadJobs {
                     .setContentText(first)
                     .setStyle(new Notification.BigTextStyle().bigText(text))
                     .setAutoCancel(true);
+            if (thumb != null) {
+                // like Continuum: the picture, with the count and folder under it
+                b.setLargeIcon(thumb);
+                b.setStyle(new Notification.BigPictureStyle().bigPicture(thumb).setSummaryText(text));
+            }
             if (error) {
                 b.setPriority(Notification.PRIORITY_HIGH);
                 if (retryKey != null) {

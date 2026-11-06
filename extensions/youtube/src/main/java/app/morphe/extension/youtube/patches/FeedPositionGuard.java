@@ -29,7 +29,7 @@ import app.morphe.extension.youtube.shared.PlayerType;
 @SuppressWarnings({"unused", "deprecation"})
 public final class FeedPositionGuard {
 
-    private static final long SAMPLE_INTERVAL_MS = 500;
+    private static final long SAMPLE_INTERVAL_MS = 1500; // 69 mod: was 500, less work while scrolling
     private static final long RESTORE_POLL_MS = 120;
     private static final long RESTORE_WINDOW_MS = 6000;
     private static final long MAX_WAIT_BEHIND_PLAYER_MS = 30 * 60 * 1000;
@@ -91,8 +91,12 @@ public final class FeedPositionGuard {
                 || t == PlayerType.WATCH_WHILE_SLIDING_MINIMIZED_DISMISSED;
     }
 
+    /** 69 mod: going to / coming back from picture-in-picture needs no feed restore (that made it slow). */
+    private static boolean pipPause;
+
     private static void onPause(Activity activity) {
         try {
+            pipPause = android.os.Build.VERSION.SDK_INT >= 24 && activity.isInPictureInPictureMode();
             resumed = false;
             handler.removeCallbacksAndMessages(null);
             chunking = false;
@@ -109,6 +113,11 @@ public final class FeedPositionGuard {
             handler.removeCallbacksAndMessages(null);
             chunking = false;
             if (!enabled()) return;
+            if (pipPause) {
+                pipPause = false;
+                scheduleSample(activity);
+                return;
+            }
             if (savedOffset >= MIN_OFFSET_TO_RESTORE) {
                 arm();
                 handler.postDelayed(() -> restoreStep(activity), RESTORE_POLL_MS);
@@ -276,6 +285,24 @@ public final class FeedPositionGuard {
     /** The largest visible vertically scrolling RecyclerView that fills a good part of the screen. */
     @Nullable
     public static RecyclerView findFeed(Activity activity) {
+        // 69 mod: reuse the last feed while it is still on screen (walking every view was slow)
+        RecyclerView last = lastFeed.get();
+        if (last != null && last.isAttachedToWindow() && last.isShown() && last.getContext() == activity
+                && last.getGlobalVisibleRect(new Rect())) {
+            long now = android.os.SystemClock.uptimeMillis();
+            if (now - lastFeedSearch < 3000) return last;
+        }
+        RecyclerView found = searchFeed(activity);
+        lastFeed = new WeakReference<>(found);
+        lastFeedSearch = android.os.SystemClock.uptimeMillis();
+        return found;
+    }
+
+    private static WeakReference<RecyclerView> lastFeed = new WeakReference<>(null);
+    private static long lastFeedSearch;
+
+    @Nullable
+    private static RecyclerView searchFeed(Activity activity) {
         View root = activity.getWindow().getDecorView();
         int screenHeight = root.getHeight();
         RecyclerView[] best = new RecyclerView[1];

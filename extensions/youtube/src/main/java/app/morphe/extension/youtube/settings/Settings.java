@@ -194,6 +194,8 @@ public class Settings extends SharedYouTubeSettings {
     public static final BooleanSetting SHORTS_BLOCK_DONT_RECOMMEND = new BooleanSetting("morphe_shorts_block_dont_recommend", TRUE);
     public static final BooleanSetting SHORTS_SAVE_BUTTON = new BooleanSetting("morphe_shorts_save_button", TRUE);
     public static final BooleanSetting SHORTS_DOWNLOAD_BUTTON = new BooleanSetting("morphe_shorts_download_button", TRUE);
+    public static final BooleanSetting SHORTS_SKIP_BLOCKED = new BooleanSetting("morphe_shorts_skip_blocked", TRUE);
+    public static final BooleanSetting SHORTS_SKIP_GHOST = new BooleanSetting("morphe_shorts_skip_ghost", TRUE);
     public static final BooleanSetting DOWNLOAD_POST_IMAGES_FLYOUT = new BooleanSetting("morphe_download_post_images_flyout", TRUE);
     public static final BooleanSetting DOWNLOAD_COMMENT_IMAGES_FLYOUT = new BooleanSetting("morphe_download_comment_images_flyout", TRUE);
     public static final BooleanSetting DOWNLOAD_GIF_TO_MP4 = new BooleanSetting("morphe_download_gif_to_mp4", TRUE);

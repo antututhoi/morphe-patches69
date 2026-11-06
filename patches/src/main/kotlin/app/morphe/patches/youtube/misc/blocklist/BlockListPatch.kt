@@ -40,7 +40,9 @@ val blockListPatch = bytecodePatch(
             SwitchPreference("morphe_shorts_skip_after_block", summary = true),
             SwitchPreference("morphe_shorts_block_dont_recommend", summary = true),
             SwitchPreference("morphe_shorts_save_button", summary = true),
-            SwitchPreference("morphe_shorts_download_button", summary = true)
+            SwitchPreference("morphe_shorts_download_button", summary = true),
+            SwitchPreference("morphe_shorts_skip_blocked", summary = true),
+            SwitchPreference("morphe_shorts_skip_ghost", summary = true)
         )
 
         addLithoFilter(FILTER_CLASS)

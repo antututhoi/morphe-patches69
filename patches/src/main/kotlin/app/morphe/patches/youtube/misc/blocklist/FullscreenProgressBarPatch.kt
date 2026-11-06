@@ -5,6 +5,7 @@ import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.shared.misc.settings.preference.SwitchPreference
 import app.morphe.patches.youtube.misc.extension.sharedExtensionPatch
 import app.morphe.patches.youtube.misc.playertype.playerTypeHookPatch
+import app.morphe.patches.youtube.misc.playercontrols.playerControlsOverlayVisibilityPatch
 import app.morphe.patches.youtube.misc.settings.PreferenceScreen
 import app.morphe.patches.youtube.misc.settings.settingsPatch
 import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
@@ -19,7 +20,7 @@ val fullscreenProgressBarPatch = bytecodePatch(
     name = "69-Fullscreen progress bar",
     description = "Always shows a draggable progress bar at the bottom of the video in fullscreen."
 ) {
-    dependsOn(sharedExtensionPatch, settingsPatch, playerTypeHookPatch, videoInformationPatch)
+    dependsOn(sharedExtensionPatch, settingsPatch, playerTypeHookPatch, videoInformationPatch, playerControlsOverlayVisibilityPatch)
 
     compatibleWith(COMPATIBILITY_YOUTUBE)
 

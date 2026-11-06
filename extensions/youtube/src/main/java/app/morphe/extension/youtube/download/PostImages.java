@@ -70,11 +70,13 @@ public final class PostImages {
 
     /** Called by the feed filter for every post laid out. */
     public static void onPostBuffer(byte[] buffer, String ascii) {
+        lastPostMs = System.currentTimeMillis();
         remember(posts, buffer, ascii, false);
     }
 
     /** Called by the feed filter for every comment laid out. */
     public static void onCommentBuffer(byte[] buffer, String ascii) {
+        lastCommentMs = System.currentTimeMillis();
         remember(comments, buffer, ascii, true);
     }
 
@@ -107,27 +109,56 @@ public final class PostImages {
      * so a shared short text ("2 days ago", the channel name) can't pick a neighbour post.
      */
     private static Item findTouched(Map<byte[], Item> in, List<String> texts) {
-        Item best = null;
-        int bestScore = 0;
+        return findTouched(in, texts, false);
+    }
+
+    private static Item findTouched(Map<byte[], Item> in, List<String> texts, boolean strict) {
+        // 69 mod: only texts that are in exactly ONE remembered item count (a text shared by
+        // several posts, like the channel name or "2 days ago", used to pick the wrong post)
+        List<Item> items;
         synchronized (in) {
-            for (Item item : in.values()) {
-                int score = 0;
-                for (String t : texts) {
-                    if (t.length() < 6 || t.length() > 400) continue;
-                    String probe = t.length() > 60 ? t.substring(0, 60) : t;
-                    if (FlyoutUtils.byteIndexOf(item.buffer, probe.getBytes(StandardCharsets.UTF_8)) >= 0) {
-                        score += Math.min(probe.length(), 60);
-                    }
-                }
-                // LinkedHashMap in access order: later = newer, so ">=" prefers the newest on a tie.
-                if (score > 0 && score >= bestScore) {
-                    best = item;
-                    bestScore = score;
+            items = new ArrayList<>(in.values());
+        }
+        if (items.isEmpty()) return null;
+        int[] score = new int[items.size()];
+        int[] anyScore = new int[items.size()];
+        for (String t : texts) {
+            if (t.length() < 6 || t.length() > 400) continue;
+            String probe = t.length() > 60 ? t.substring(0, 60) : t;
+            byte[] pb = probe.getBytes(StandardCharsets.UTF_8);
+            int hits = 0, last = -1;
+            for (int i = 0; i < items.size(); i++) {
+                if (FlyoutUtils.byteIndexOf(items.get(i).buffer, pb) >= 0) {
+                    hits++;
+                    last = i;
+                    anyScore[i] += Math.min(probe.length(), 60);
                 }
             }
+            if (hits == 1) score[last] += Math.min(probe.length(), 60);
         }
-        return bestScore >= 12 ? best : null;
+        // newest wins a tie (LinkedHashMap in access order: later = newer)
+        int best = -1;
+        for (int i = 0; i < items.size(); i++) {
+            if (score[i] > 0 && (best < 0 || score[i] >= score[best])) best = i;
+        }
+        if (best >= 0 && score[best] >= 12) return items.get(best);
+        if (strict) return null;
+        // nothing unique: fall back to the old rule, but only when one item is clearly ahead
+        best = -1;
+        int second = 0;
+        for (int i = 0; i < items.size(); i++) {
+            if (best < 0 || anyScore[i] >= anyScore[best]) {
+                if (best >= 0) second = Math.max(second, anyScore[best]);
+                best = i;
+            } else {
+                second = Math.max(second, anyScore[i]);
+            }
+        }
+        return best >= 0 && anyScore[best] >= 12 && anyScore[best] > second ? items.get(best) : null;
     }
+
+    /** 69 mod: when comments were laid out after the last post, the menu is a comment's menu. */
+    private static volatile long lastCommentMs, lastPostMs;
 
     public static int addFlyoutButtons(Object flyoutPanel, int index) {
         List<String> texts = new ArrayList<>(FeedGestures.getLastTouchedTexts());
@@ -143,7 +174,9 @@ public final class PostImages {
             return app.morphe.extension.youtube.blocklist.BlockList.addAuthorButtons(
                     flyoutPanel, index, authorName(comment, texts), comment.cid, true);
         }
-        Item post = findTouched(posts, texts);
+        // 69 mod: in the comments (laid out after the post) a post is only picked when its own
+        // text was touched, so the comment menu doesn't get "Download post images"
+        Item post = findTouched(posts, texts, lastCommentMs > lastPostMs);
         if (post == null) return index;
         if (Settings.DOWNLOAD_POST_IMAGES_FLYOUT.get() && !post.bases.isEmpty()) {
             index = addButtons(flyoutPanel, index, icon, delIcon, "post:" + post.bases.get(0), post, texts, false);
@@ -246,13 +279,16 @@ public final class PostImages {
                     mime = "video/mp4";
                 }
             }
+            if (job.thumb == null) {
+                try { job.thumbnail(preview(f.data)); } catch (Exception ignored) {}
+            }
             String file = name + (numbered ? "_" + (i + 1) : "") + ext;
             where = FileSaver.save(folder, file, mime, data);
             Downloaded.add(key, FileSaver.lastUri.get());
             saved++;
         }
         int slash = where.lastIndexOf('/');
-        return saved + " file(s) saved to " + (slash > 0 ? where.substring(0, slash) : where);
+        return saved + (saved == 1 ? " image" : " images") + " saved · " + (slash > 0 ? where.substring(0, slash) : where);
     }
 
     private static Fetched fetch(String base, StringBuilder log) {

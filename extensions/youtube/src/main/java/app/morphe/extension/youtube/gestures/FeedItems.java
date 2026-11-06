@@ -183,4 +183,200 @@ public final class FeedItems {
             return channel && live;
         });
     }
+
+    // ---------------- 69 mod: "Blocked X · tap to undo" placeholder ----------------
+
+    private static final int TAG_PLACEHOLDER = 0x69690002;
+    private static final java.util.Map<View, Runnable> undoOf = new java.util.WeakHashMap<>();
+    private static final java.util.Set<RecyclerView> watched =
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+    /** Channels blocked in this session: their items stay placeholders when scrolled back to. */
+    private static final java.util.Map<String, Runnable> sessionBlocked = new java.util.LinkedHashMap<>();
+
+    /** A dark bar with the text, drawn over the shrunken item. */
+    private static final class BarDrawable extends android.graphics.drawable.Drawable {
+        final android.graphics.Paint bg = new android.graphics.Paint(), fg = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        final String text;
+        final float d;
+
+        BarDrawable(String text, float density) {
+            this.text = text;
+            this.d = density;
+            bg.setColor(0xFF212121);
+            fg.setColor(0xFFE0E0E0);
+            fg.setTextSize(14 * density);
+        }
+
+        @Override
+        public void draw(android.graphics.Canvas c) {
+            android.graphics.Rect b = getBounds();
+            c.drawRect(b, bg);
+            float y = b.centerY() - (fg.descent() + fg.ascent()) / 2;
+            c.drawText(text, b.left + 16 * d, y, fg);
+            android.graphics.Paint u = new android.graphics.Paint(fg);
+            u.setColor(0xFF3EA6FF);
+            u.setFakeBoldText(true);
+            String undo = "UNDO";
+            c.drawText(undo, b.right - 16 * d - u.measureText(undo), y, u);
+        }
+
+        @Override public void setAlpha(int alpha) {}
+        @Override public void setColorFilter(@Nullable android.graphics.ColorFilter cf) {}
+        @Override public int getOpacity() { return android.graphics.PixelFormat.OPAQUE; }
+    }
+
+    /** Shrinks the item to a bar "Blocked X   UNDO"; tapping it runs [onUndo] and shows the item again. */
+    public static void placeholder(View item, String text, Runnable onUndo) {
+        if (item.getTag(TAG_PLACEHOLDER) != null) return;
+        ViewGroup.LayoutParams lp = item.getLayoutParams();
+        if (lp == null) return;
+        final int oldHeight = lp.height;
+        float d = item.getResources().getDisplayMetrics().density;
+        BarDrawable bar = new BarDrawable(text, d);
+        Runnable restore = () -> {
+            item.getOverlay().remove(bar);
+            ViewGroup.LayoutParams p = item.getLayoutParams();
+            if (p != null) {
+                p.height = oldHeight;
+                item.setLayoutParams(p);
+            }
+            item.setTag(TAG_PLACEHOLDER, null);
+            undoOf.remove(item);
+        };
+        item.setTag(TAG_PLACEHOLDER, restore);
+        lp.height = (int) (52 * d);
+        item.setLayoutParams(lp);
+        item.getOverlay().add(bar);
+        View.OnLayoutChangeListener sizer = (v, l, t, r, b, ol, ot, or, ob) -> bar.setBounds(0, 0, r - l, b - t);
+        item.addOnLayoutChangeListener(sizer);
+        bar.setBounds(0, 0, item.getWidth(), (int) (52 * d));
+        undoOf.put(item, () -> {
+            restore.run();
+            onUndo.run();
+        });
+        item.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override public void onViewAttachedToWindow(View v) {}
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {
+                v.removeOnAttachStateChangeListener(this);
+                v.removeOnLayoutChangeListener(sizer);
+                if (v.getTag(TAG_PLACEHOLDER) == restore) restore.run();
+            }
+        });
+        RecyclerView rv = parentList(item);
+        if (rv != null) watch(rv);
+    }
+
+    /** Taps on a placeholder undo; items of channels blocked now become placeholders again when they come back. */
+    private static void watch(RecyclerView rv) {
+        if (!watched.add(rv)) return;
+        rv.addOnItemTouchListener(new RecyclerView.OnItemTouchListener() {
+            float x, y;
+
+            @Override
+            public boolean onInterceptTouchEvent(RecyclerView r, android.view.MotionEvent e) {
+                if (undoOf.isEmpty()) return false;
+                if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
+                    x = e.getX();
+                    y = e.getY();
+                    View c = r.findChildViewUnder(x, y);
+                    return c != null && undoOf.containsKey(c);
+                }
+                return false;
+            }
+
+            @Override
+            public void onTouchEvent(RecyclerView r, android.view.MotionEvent e) {
+                if (e.getActionMasked() != android.view.MotionEvent.ACTION_UP) return;
+                float slop = 12 * r.getResources().getDisplayMetrics().density;
+                if (Math.abs(e.getX() - x) > slop || Math.abs(e.getY() - y) > slop) return;
+                View c = r.findChildViewUnder(e.getX(), e.getY());
+                Runnable u = c == null ? null : undoOf.get(c);
+                if (u != null) u.run();
+            }
+
+            @Override public void onRequestDisallowInterceptTouchEvent(boolean disallow) {}
+        });
+        rv.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
+            @Override
+            public void onChildViewAttachedToWindow(View child) {
+                if (sessionBlocked.isEmpty()) return;
+                // the item draws its content right after attaching
+                child.postDelayed(() -> recheck(child), 60);
+            }
+
+            @Override public void onChildViewDetachedFromWindow(View child) {}
+        });
+    }
+
+    private static void recheck(View child) {
+        if (child.getParent() == null || child.getTag(TAG_PLACEHOLDER) != null) return;
+        List<String> t = texts(child);
+        for (java.util.Map.Entry<String, Runnable> e : new ArrayList<>(sessionBlocked.entrySet())) {
+            String name = e.getKey();
+            for (String s : t) {
+                if (s.toLowerCase(Locale.ROOT).contains(name)) {
+                    labelOf.put(child, name);
+                    placeholder(child, "Blocked " + name, e.getValue());
+                    return;
+                }
+            }
+        }
+    }
+
+    /** Turns this channel's items on screen into placeholders (and the ones that come back later). */
+    public static int placeholderChannelOnScreen(String channelName, boolean onlyLive, List<String> liveWords,
+                                                 String label, Runnable onUndo) {
+        if (channelName == null || channelName.isEmpty()) return 0;
+        final String name = channelName.toLowerCase(Locale.ROOT);
+        Runnable undoAll = () -> {
+            synchronized (sessionBlocked) {
+                sessionBlocked.remove(name);
+            }
+            onUndo.run();
+            // show every placeholder of this channel again
+            for (java.util.Map.Entry<View, Runnable> e : new ArrayList<>(undoOf.entrySet())) {
+                Object tag = e.getKey().getTag(TAG_PLACEHOLDER);
+                if (tag instanceof Runnable && labelOf.get(e.getKey()) != null && labelOf.get(e.getKey()).equals(name)) {
+                    ((Runnable) tag).run();
+                }
+            }
+        };
+        if (!onlyLive) {
+            synchronized (sessionBlocked) {
+                sessionBlocked.put(name, undoAll);
+            }
+        }
+        int n = 0;
+        try {
+            Activity a = Utils.getActivity();
+            if (a == null) return 0;
+            RecyclerView rv = FeedPositionGuard.findFeed(a);
+            if (rv == null) return 0;
+            watch(rv);
+            for (int i = 0, c = rv.getChildCount(); i < c; i++) {
+                View child = rv.getChildAt(i);
+                if (child == null) continue;
+                boolean channel = false, live = !onlyLive;
+                for (String t : texts(child)) {
+                    if (t.toLowerCase(Locale.ROOT).contains(name)) channel = true;
+                    if (onlyLive && !live) {
+                        if (t.equals("LIVE")) live = true;
+                        for (String w : liveWords) if (!w.isEmpty() && t.contains(w)) live = true;
+                    }
+                }
+                if (channel && live) {
+                    labelOf.put(child, name);
+                    placeholder(child, label, undoAll);
+                    n++;
+                }
+            }
+        } catch (Exception ex) {
+            Logger.printException(() -> "placeholderChannelOnScreen failure", ex);
+        }
+        return n;
+    }
+
+    private static final java.util.Map<View, String> labelOf = new java.util.WeakHashMap<>();
 }

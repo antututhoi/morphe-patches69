@@ -419,14 +419,18 @@ Reports are public and are reviewed before a channel is added to a list. Removal
     <string name="morphe_feed_swipe_gestures_summary">Swipe a video left to hide it, right to block its channel</string>
     <string name="morphe_block_channel_posts_title">Hide posts of blocked channels</string>
     <string name="morphe_block_channel_posts_summary">Posts of blocked channels are hidden too</string>
-    <string name="morphe_shorts_skip_after_block_title">Skip Short after blocking</string>
+    <string name="morphe_shorts_skip_after_block_title">69- Skip Short after blocking</string>
     <string name="morphe_shorts_skip_after_block_summary">Blocking the channel of a Short moves to the next Short</string>
     <string name="morphe_shorts_block_dont_recommend_title">Block in Shorts = \"Don\'t recommend channel\"</string>
     <string name="morphe_shorts_block_dont_recommend_summary">Blocking a channel from the Shorts menu also presses YouTube\'s own \"Don\'t recommend channel\", so its Shorts stop coming</string>
-    <string name="morphe_shorts_save_button_title">Save button on Shorts</string>
-    <string name="morphe_shorts_download_button_title">Download button on Shorts</string>
+    <string name="morphe_shorts_save_button_title">69- Save button on Shorts</string>
+    <string name="morphe_shorts_download_button_title">69- Download button on Shorts</string>
     <string name="morphe_shorts_download_button_summary">Shows a Download button above the Shorts buttons that opens your external downloader (set in Video player → Downloads)</string>
     <string name="morphe_shorts_save_button_summary">Shows a Save button above the Shorts buttons to save the Short to your playlists</string>
+    <string name="morphe_shorts_skip_blocked_title">69- Skip Shorts of blocked channels</string>
+    <string name="morphe_shorts_skip_blocked_summary">When a Short of a blocked channel starts, it is paused and the next Short starts</string>
+    <string name="morphe_shorts_skip_ghost_title">69- Skip Shorts without buttons</string>
+    <string name="morphe_shorts_skip_ghost_summary">Skips Shorts that show no like/comment buttons, no channel and no info ("ghost" Shorts and livestreams mixed into Shorts)</string>
     <string name="morphe_download_post_images_flyout_title">Download post images in flyout menu</string>
     <string name="morphe_download_comment_images_flyout_title">Download comment images in flyout menu</string>
     <string name="morphe_download_comment_images_flyout_summary">Adds \"Download comment image\" to the 3-dot menu of a comment with an image. Saved straight into the download folder</string>

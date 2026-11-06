@@ -72,7 +72,20 @@ public final class BlockList {
         cachedLive = targets(BlockListSync.LIVE);
         cachedPosts = targets(BlockListSync.POSTS);
         cachedShorts = targets(BlockListSync.SHORTS);
+        // 69 mod: one-pass matchers (fast scrolling)
+        matchChannels = FastMatcher.of(cachedChannels);
+        matchLive = FastMatcher.of(cachedLive);
+        matchPosts = FastMatcher.of(cachedPosts);
+        matchShorts = FastMatcher.of(cachedShorts);
     }
+
+    private static FastMatcher matchChannels = FastMatcher.of(new ArrayList<>());
+    private static FastMatcher matchLive = matchChannels, matchPosts = matchChannels, matchShorts = matchChannels;
+
+    public static synchronized FastMatcher channelsMatcher() { load(); return matchChannels; }
+    public static synchronized FastMatcher liveMatcher() { load(); return matchLive; }
+    public static synchronized FastMatcher postsMatcher() { load(); return matchPosts; }
+    public static synchronized FastMatcher shortsMatcher() { load(); return matchShorts; }
 
     private static List<Target> targets(String list) {
         List<Target> out = new ArrayList<>();
@@ -182,8 +195,17 @@ public final class BlockList {
             }
             cachedHiddenBytes = out;
             cachedHiddenRaw = raw;
+            hiddenMatcher = new FastMatcher(out, new java.util.HashSet<>());
         }
         return cachedHiddenBytes;
+    }
+
+    private static FastMatcher hiddenMatcher = new FastMatcher(new ArrayList<>(), new java.util.HashSet<>());
+
+    /** 69 mod: titles hidden by swiping, all checked in one pass. */
+    public static synchronized FastMatcher hiddenTitlesMatcher() {
+        getHiddenTitleBytes();
+        return hiddenMatcher;
     }
 
     // ---------------- 3-dot menu ----------------
@@ -238,13 +260,13 @@ public final class BlockList {
                 Utils.showToastShort(str("morphe_block_list_removed"));
             } else {
                 add(list, name, cid);
-                showUndo(list, name, cid);
                 // 69 mod: in Shorts also press YouTube's own "Don't recommend channel"
+                if (app.morphe.extension.youtube.shared.ShortsPlayerState.isOpen()) showUndo(list, name, cid);
                 if (dontRecommendInShorts(panel, list)) {
                     BlockListFileSync.syncSoon();
                     return;
                 }
-                afterBlock(list, name);
+                afterBlock(list, name, cid);
             }
             BlockListFileSync.syncSoon();
             FlyoutUtils.dismissFlyout();
@@ -304,7 +326,7 @@ public final class BlockList {
         return null;
     }
 
-    private static void afterBlock(String list, String name) {
+    private static void afterBlock(String list, String name, String cid) {
         try {
             if (app.morphe.extension.youtube.shared.ShortsPlayerState.isOpen()) {
                 if (Settings.SHORTS_SKIP_AFTER_BLOCK.get()) {
@@ -318,9 +340,22 @@ public final class BlockList {
                 w = w.trim().replace("\"", "");
                 if (!w.isEmpty()) words.add(w);
             }
-            // The 3-dot menu is still closing; hide when the feed is touchable again.
-            Utils.runOnMainThreadDelayed(() ->
-                    app.morphe.extension.youtube.gestures.FeedItems.hideChannelOnScreen(name, live, words), 300);
+            String what = live ? "livestreams of " : list.equals(BlockListSync.SHORTS)
+                    ? "Shorts of " : list.equals(BlockListSync.POSTS) ? "posts of " : "";
+            String label = "Blocked " + what + (name.isEmpty() ? cid : name);
+            Runnable undo = () -> {
+                String key = findKey(list, name, cid);
+                if (key != null) remove(list, key);
+                BlockListFileSync.syncSoon();
+                Utils.showToastShort("Unblocked " + (name.isEmpty() ? cid : name));
+            };
+            // 69 mod: the blocked items turn into a "Blocked X   UNDO" bar right where they were.
+            // The 3-dot menu is still closing; do it when the feed is touchable again.
+            Utils.runOnMainThreadDelayed(() -> {
+                int n = app.morphe.extension.youtube.gestures.FeedItems.placeholderChannelOnScreen(
+                        name, live, words, label, undo);
+                if (n == 0) showUndo(list, name, cid);
+            }, 300);
         } catch (Exception ex) {
             Logger.printException(() -> "afterBlock failure", ex);
         }

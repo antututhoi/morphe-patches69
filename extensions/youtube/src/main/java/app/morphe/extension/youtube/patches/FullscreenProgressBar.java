@@ -1,22 +1,27 @@
 /*
- * Always shows a progress bar at the bottom of the video in fullscreen, like outside fullscreen.
- * It can be dragged to seek. Added on top of the activity, shown only in fullscreen.
+ * 69 mod: a thin progress bar on the very bottom edge in fullscreen (like outside fullscreen).
+ * Hidden while YouTube's own player controls are showing (they have their own bar).
+ * Drag it to seek.
  */
 package app.morphe.extension.youtube.patches;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.content.res.ColorStateList;
+import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import android.widget.SeekBar;
 
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.youtube.settings.Settings;
+import app.morphe.extension.youtube.shared.PlayerControlsVisibility;
 import app.morphe.extension.youtube.shared.PlayerType;
 
 @SuppressWarnings("unused")
@@ -24,12 +29,67 @@ public final class FullscreenProgressBar {
 
     private static final Handler handler = new Handler(Looper.getMainLooper());
     private static final long UPDATE_MS = 250;
-    private static SeekBar bar;
-    private static boolean dragging;
+    private static Bar bar;
     private static boolean running;
 
     public static boolean isPatchIncluded() {
         return false; // Modified during patching.
+    }
+
+    /** Draws the bar at the bottom of a taller (invisible) touch zone. */
+    @SuppressLint("ViewConstructor")
+    private static final class Bar extends View {
+        final Paint track = new Paint(), played = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final float d;
+        float fraction;
+        boolean dragging;
+
+        Bar(Context c) {
+            super(c);
+            d = c.getResources().getDisplayMetrics().density;
+            track.setColor(Color.argb(90, 255, 255, 255));
+            played.setColor(Color.parseColor("#FF0033"));
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            float h = getHeight(), w = getWidth();
+            // same thickness as YouTube's own bar; thicker with a dot while dragging
+            float t = (dragging ? 6 : 4) * d;
+            c.drawRect(0, h - t, w, h, track);
+            c.drawRect(0, h - t, w * fraction, h, played);
+            if (dragging) c.drawCircle(w * fraction, h - t / 2, 7 * d, played);
+        }
+
+        @SuppressLint("ClickableViewAccessibility")
+        @Override
+        public boolean onTouchEvent(MotionEvent e) {
+            float f = Math.max(0, Math.min(1, e.getX() / Math.max(1, getWidth())));
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    dragging = true;
+                    getParent().requestDisallowInterceptTouchEvent(true);
+                    fraction = f;
+                    invalidate();
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    fraction = f;
+                    invalidate();
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    fraction = f;
+                    dragging = false;
+                    long length = VideoInformation.getVideoLength();
+                    if (length > 0) VideoInformation.seekTo((long) (length * f));
+                    invalidate();
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    dragging = false;
+                    invalidate();
+                    return true;
+            }
+            return super.onTouchEvent(e);
+        }
     }
 
     /** Injection point. Called when the main activity is created. */
@@ -38,73 +98,17 @@ public final class FullscreenProgressBar {
             if (!isPatchIncluded() || !Settings.FULLSCREEN_PROGRESS_BAR.get()) return;
             ViewGroup decor = (ViewGroup) activity.getWindow().getDecorView();
             float density = activity.getResources().getDisplayMetrics().density;
-
-            SeekBar seekBar = new SeekBar(activity);
-            seekBar.setMax(1000);
-            // 69 mod: looks like YouTube's own thin progress bar: edge to edge, red over a light track,
-            // the round handle only shows while you drag.
-            seekBar.setPadding(0, 0, 0, 0);
-            int red = Color.parseColor("#FF0033");
-            android.graphics.drawable.GradientDrawable track = new android.graphics.drawable.GradientDrawable();
-            track.setColor(Color.argb(90, 255, 255, 255));
-            android.graphics.drawable.GradientDrawable played = new android.graphics.drawable.GradientDrawable();
-            played.setColor(red);
-            android.graphics.drawable.LayerDrawable layers = new android.graphics.drawable.LayerDrawable(
-                    new android.graphics.drawable.Drawable[]{
-                            track,
-                            new android.graphics.drawable.ClipDrawable(played, Gravity.START,
-                                    android.graphics.drawable.ClipDrawable.HORIZONTAL)
-                    });
-            layers.setId(0, android.R.id.background);
-            layers.setId(1, android.R.id.progress);
-            seekBar.setProgressDrawable(layers);
-            if (android.os.Build.VERSION.SDK_INT >= 29) {
-                seekBar.setMinHeight((int) (3 * density));
-                seekBar.setMaxHeight((int) (3 * density));
-            }
-            android.graphics.drawable.GradientDrawable thumb = new android.graphics.drawable.GradientDrawable();
-            thumb.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-            thumb.setColor(red);
-            thumb.setSize((int) (13 * density), (int) (13 * density));
-            thumb.setAlpha(0);
-            seekBar.setThumb(thumb);
-            seekBar.setThumbOffset(0);
-            seekBar.setSplitTrack(false);
-            seekBar.setVisibility(View.GONE);
-            seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override
-                public void onProgressChanged(SeekBar s, int progress, boolean fromUser) {}
-
-                @Override
-                public void onStartTrackingTouch(SeekBar s) {
-                    dragging = true;
-                    s.getThumb().setAlpha(255);
-                    if (android.os.Build.VERSION.SDK_INT >= 29) {
-                        s.setMinHeight((int) (5 * density));
-                        s.setMaxHeight((int) (5 * density));
-                    }
-                }
-
-                @Override
-                public void onStopTrackingTouch(SeekBar s) {
-                    dragging = false;
-                    s.getThumb().setAlpha(0);
-                    if (android.os.Build.VERSION.SDK_INT >= 29) {
-                        s.setMinHeight((int) (3 * density));
-                        s.setMaxHeight((int) (3 * density));
-                    }
-                    long length = VideoInformation.getVideoLength();
-                    if (length > 0) VideoInformation.seekTo(length * s.getProgress() / 1000);
-                }
+            Bar b = new Bar(activity);
+            b.setVisibility(View.GONE);
+            // 20dp touch zone; the bar itself is drawn on its bottom edge = the screen's bottom edge
+            decor.addView(b, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    (int) (20 * density), Gravity.BOTTOM));
+            bar = b;
+            PlayerType.getOnChange().addObserver(type -> {
+                handler.post(FullscreenProgressBar::update);
+                return kotlin.Unit.INSTANCE;
             });
-            // a 26dp touch zone whose middle (where the thin bar is drawn) sits at the very bottom edge
-            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, (int) (26 * density), Gravity.BOTTOM);
-            lp.bottomMargin = -(int) (11 * density);
-            decor.addView(seekBar, lp);
-            bar = seekBar;
-
-            app.morphe.extension.youtube.shared.PlayerType.getOnChange().addObserver(type -> {
+            PlayerControlsVisibility.getOnChange().addObserver(v -> {
                 handler.post(FullscreenProgressBar::update);
                 return kotlin.Unit.INSTANCE;
             });
@@ -114,23 +118,33 @@ public final class FullscreenProgressBar {
         }
     }
 
+    private static boolean controlsShowing() {
+        PlayerControlsVisibility v = PlayerControlsVisibility.getCurrent();
+        return v == PlayerControlsVisibility.PLAYER_CONTROLS_VISIBILITY_SHOWN
+                || v == PlayerControlsVisibility.PLAYER_CONTROLS_VISIBILITY_WILL_SHOW;
+    }
+
     private static void update() {
-        SeekBar b = bar;
+        Bar b = bar;
         if (b == null) return;
         boolean show = Settings.FULLSCREEN_PROGRESS_BAR.get()
-                && PlayerType.getCurrent() == PlayerType.WATCH_WHILE_FULLSCREEN;
-        b.setVisibility(show ? View.VISIBLE : View.GONE);
-        if (show) {
-            b.bringToFront();
-            if (!dragging) {
-                long length = VideoInformation.getVideoLength();
-                long time = VideoInformation.getVideoTime();
-                b.setProgress(length > 0 ? (int) (time * 1000 / length) : 0);
+                && PlayerType.getCurrent() == PlayerType.WATCH_WHILE_FULLSCREEN
+                && (b.dragging || !controlsShowing());
+        if ((b.getVisibility() == View.VISIBLE) != show) b.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (!show) return;
+        b.bringToFront();
+        if (!b.dragging) {
+            long length = VideoInformation.getVideoLength();
+            long time = VideoInformation.getVideoTime();
+            float f = length > 0 ? Math.min(1f, time / (float) length) : 0;
+            if (Math.abs(f - b.fraction) > 0.0005f) {
+                b.fraction = f;
+                b.invalidate();
             }
-            if (!running) {
-                running = true;
-                handler.postDelayed(FullscreenProgressBar::tick, UPDATE_MS);
-            }
+        }
+        if (!running) {
+            running = true;
+            handler.postDelayed(FullscreenProgressBar::tick, UPDATE_MS);
         }
     }
 

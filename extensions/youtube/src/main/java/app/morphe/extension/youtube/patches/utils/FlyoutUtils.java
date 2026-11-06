@@ -587,6 +587,9 @@ public final class FlyoutUtils {
             nextButtonIndex = ChannelWhitelist.addFlyoutButtons(flyoutPanel, nextButtonIndex, isMyTabHistoryFlyout);
             nextButtonIndex = BlockList.addFlyoutButtons(flyoutPanel, nextButtonIndex, isMyTabHistoryFlyout);
             nextButtonIndex = ThumbnailDownloader.addFlyoutButtons(flyoutPanel, nextButtonIndex, isMyTabHistoryFlyout);
+            // 69 mod: Shorts menu: "Save to playlist" and "Download" (also when the side buttons are hidden)
+            nextButtonIndex = app.morphe.extension.youtube.shorts69.ShortsSaveButton.addFlyoutButtons(
+                    flyoutPanel, nextButtonIndex, allButtonsVideoId, isShortFlyout);
         } else if (BlockList.isPatchIncluded()) {
             // Menu of a channel post.
             nextButtonIndex = app.morphe.extension.youtube.download.PostImages.addFlyoutButtons(flyoutPanel, nextButtonIndex);

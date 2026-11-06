@@ -37,10 +37,46 @@ public final class ShortsSaveButton {
 
     private ShortsSaveButton() {}
 
+    /** 69 mod: "Save to playlist" / "Download" rows in the Shorts 3-dot menu. */
+    public static int addFlyoutButtons(Object panel, int index, String videoId, boolean shortFlyout) {
+        try {
+            if (!shortFlyout && !ShortsPlayerState.isOpen()) return index;
+            if (Settings.SHORTS_SAVE_BUTTON.get()) {
+                Drawable d = icon(new String[]{"yt_outline_experimental_bookmark_vd_theme_24", "yt_outline_bookmark_black_24"});
+                index = app.morphe.extension.youtube.patches.utils.FlyoutUtils.addFlyoutButton(panel, d, "Save to playlist", v -> {
+                    app.morphe.extension.youtube.patches.utils.FlyoutUtils.dismissFlyout();
+                    Activity a = Utils.getActivity();
+                    if (a != null) ShortsSaveDialog.show(a, videoId);
+                }, index);
+            }
+            if (Settings.SHORTS_DOWNLOAD_BUTTON.get()) {
+                Drawable d = icon(new String[]{"yt_outline_experimental_download_vd_theme_24", "yt_outline_download_black_24"});
+                index = app.morphe.extension.youtube.patches.utils.FlyoutUtils.addFlyoutButton(panel, d, "Download", v -> {
+                    app.morphe.extension.youtube.patches.utils.FlyoutUtils.dismissFlyout();
+                    app.morphe.extension.shared.settings.preference.ExternalDownloaderPreference
+                            .launchExternalDownloader(videoId, v.getContext(), "https://youtube.com/shorts/" + videoId);
+                }, index);
+            }
+        } catch (Exception ex) {
+            Logger.printException(() -> "ShortsSaveButton flyout failure", ex);
+        }
+        return index;
+    }
+
+    private static Drawable icon(String[] names) {
+        for (String n : names) {
+            Drawable d = ResourceUtils.getDrawable(n);
+            if (d != null) return d;
+        }
+        return null;
+    }
+
     /** Called when the Shorts player opens or closes. */
     public static void onShortsOpen(boolean open) {
         try {
-            if (!Settings.SHORTS_SAVE_BUTTON.get() && !Settings.SHORTS_DOWNLOAD_BUTTON.get()) return;
+            if (!Settings.SHORTS_SAVE_BUTTON.get() && !Settings.SHORTS_DOWNLOAD_BUTTON.get()
+                    && !Settings.SHORTS_SKIP_GHOST.get() && !Settings.SHORTS_SKIP_BLOCKED.get()) return;
+            ghostReset();
             Utils.runOnMainThread(() -> {
                 if (open) {
                     if (!running) {
@@ -67,7 +103,7 @@ public final class ShortsSaveButton {
             } catch (Exception ex) {
                 Logger.printException(() -> "ShortsSaveButton place failure", ex);
             }
-            handler.postDelayed(this, 250);
+            handler.postDelayed(this, 400);
         }
     };
 
@@ -135,26 +171,114 @@ public final class ShortsSaveButton {
         return b;
     }
 
+    private static WeakReference<View> barRef = new WeakReference<>(null);
+
+    // ---- 69 mod: skip "ghost" Shorts (no buttons) and Shorts of blocked channels ----
+    private static boolean barSeen;
+    private static long missingSince;
+    private static String skippedId = "";
+
+    private static void ghostReset() {
+        barSeen = false;
+        missingSince = 0;
+    }
+
+    private static void skip(String why) {
+        String id = VideoInformation.getVideoId();
+        if (id != null && id.equals(skippedId)) return;
+        skippedId = id == null ? "" : id;
+        Logger.printDebug(() -> "Shorts skip: " + why);
+        app.morphe.extension.youtube.gestures.ShortsSkip.next();
+    }
+
+    /** Called when a new video's channel is known (also for Shorts). */
+    public static void onChannel(String cid) {
+        if (!Settings.SHORTS_SKIP_BLOCKED.get() || !ShortsPlayerState.isOpen()) return;
+        if (!app.morphe.extension.youtube.blocklist.BlockList.isPatchIncluded()) return;
+        String name = VideoInformation.getChannelName();
+        String v = VideoInformation.getVideoId();
+        boolean blocked = app.morphe.extension.youtube.blocklist.BlockList.isBlocked(
+                app.morphe.extension.youtube.blocklist.BlockListSync.CHANNELS, name, cid)
+                || app.morphe.extension.youtube.blocklist.BlockList.isBlocked(
+                app.morphe.extension.youtube.blocklist.BlockListSync.SHORTS, name, cid);
+        if (!blocked) return;
+        // wait a moment: the Shorts pager may still be settling on this page
+        handler.postDelayed(() -> {
+            if (!ShortsPlayerState.isOpen()) return;
+            String now = VideoInformation.getVideoId();
+            if (v != null && !v.equals(now)) return;
+            if (!cid.equals(VideoInformation.getChannelId())) return;
+            skip("blocked channel " + name);
+        }, 450);
+    }
+
+    private static boolean listening;
+
+    private static void listen() {
+        if (listening) return;
+        listening = true;
+        VideoInformation.onChannelIdChange.addObserver((String cid) -> {
+            Utils.runOnMainThread(() -> onChannel(cid));
+            return kotlin.Unit.INSTANCE;
+        });
+    }
+
+    private static void checkGhost(@androidx.annotation.Nullable View bar) {
+        if (!Settings.SHORTS_SKIP_GHOST.get()) return;
+        long now = System.currentTimeMillis();
+        if (bar != null && bar.getHeight() > 0) {
+            barSeen = true; // proves the buttons can be found on this phone
+            missingSince = 0;
+            return;
+        }
+        if (!barSeen) return;
+        if (!app.morphe.extension.youtube.shared.EngagementPanel.getCurrentOpenedPanels().isEmpty()) {
+            missingSince = 0; // comments/description open
+            return;
+        }
+        if (missingSince == 0) {
+            missingSince = now;
+        } else if (now - missingSince > 1600) {
+            missingSince = 0;
+            skip("no buttons");
+        }
+    }
+
     /** Puts the button just above YouTube's own right-side Shorts buttons of the Short on screen. */
     private static void place() {
         Activity a = Utils.getActivity();
         if (a == null || !ShortsPlayerState.isOpen()) return;
+        listen();
+        // 69 mod: reuse the bar found last time while it is still on screen (walking the whole
+        // screen every tick made the app slow)
+        View bar = barRef.get();
+        Rect r = new Rect();
+        int h = a.getResources().getDisplayMetrics().heightPixels;
+        if (bar == null || !bar.isShown() || !bar.getGlobalVisibleRect(r) || r.top < 0 || r.top >= h) {
+            int barId = ResourceUtils.getIdentifier(ResourceType.ID, "reel_right_dyn_bar");
+            bar = barId == 0 ? null : findOnScreen(a.getWindow().getDecorView(), barId, r, 0);
+            barRef = new WeakReference<>(bar);
+        }
+        checkGhost(bar);
+        if (!Settings.SHORTS_SAVE_BUTTON.get() && !Settings.SHORTS_DOWNLOAD_BUTTON.get()) return;
         LinearLayout b = button(a);
         if (b == null) return;
-        int barId = ResourceUtils.getIdentifier(ResourceType.ID, "reel_right_dyn_bar");
-        View bar = barId == 0 ? null : findOnScreen(a.getWindow().getDecorView(), barId, new Rect(), 0);
-        if (bar == null || bar.getHeight() == 0) {
-            b.setVisibility(View.GONE);
-            return;
-        }
-        int[] barLoc = new int[2];
-        bar.getLocationInWindow(barLoc);
-        int[] parentLoc = new int[2];
-        ((View) b.getParent()).getLocationInWindow(parentLoc);
+        View parent = (View) b.getParent();
         if (b.getVisibility() != View.VISIBLE) b.setVisibility(View.VISIBLE);
         b.bringToFront();
-        float x = barLoc[0] - parentLoc[0] + (bar.getWidth() - b.getWidth()) / 2f;
-        float y = barLoc[1] - parentLoc[1] - b.getHeight() - dp(a, 4);
+        float x, y;
+        if (bar == null || bar.getHeight() == 0) {
+            // YouTube's own bar was not found: right side, a bit above the middle
+            x = parent.getWidth() - b.getWidth() - dp(a, 6);
+            y = parent.getHeight() * 0.38f - b.getHeight() / 2f;
+        } else {
+            int[] barLoc = new int[2];
+            bar.getLocationInWindow(barLoc);
+            int[] parentLoc = new int[2];
+            parent.getLocationInWindow(parentLoc);
+            x = barLoc[0] - parentLoc[0] + (bar.getWidth() - b.getWidth()) / 2f;
+            y = barLoc[1] - parentLoc[1] - b.getHeight() - dp(a, 4);
+        }
         if (Math.abs(b.getX() - x) > 1) b.setX(x);
         if (Math.abs(b.getY() - y) > 1) b.setY(y);
     }
