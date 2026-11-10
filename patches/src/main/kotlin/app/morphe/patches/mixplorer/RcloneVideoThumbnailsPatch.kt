@@ -16,13 +16,15 @@ import com.android.tools.smali.dexlib2.iface.instruction.WideLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 
+// The free MiXplorer (the developer's own APK). Silver from the Play Store has a Play license check,
+// so a patched (re-signed) Silver is refused; use the free one.
 internal val COMPATIBILITY_MIXPLORER = Compatibility(
-    name = "MiXplorer Silver",
-    packageName = "com.mixplorer.silver",
-    apkFileType = ApkFileType.APKM,
+    name = "MiXplorer",
+    packageName = "com.mixplorer",
+    apkFileType = ApkFileType.APK_REQUIRED,
     appIconColor = 0x2196F3,
-    signatures = setOf("124609beb0cf3204401319fa4ce40f3b0bc1a3c3ba689fb9e409cc8b320293a4"),
-    targets = listOf(AppTarget(version = "6.71.15-Silver", minSdk = 21, isExperimental = true)),
+    signatures = setOf("724eebd26a756e0762c255052e49709391baa21d17d98c34071e091f18b90063"),
+    targets = listOf(AppTarget(version = "6.71.15", minSdk = 21, isExperimental = true)),
 )
 
 /** MiXplorer's video thumbnail maker (found by the file types and the log tag it uses). */
@@ -56,25 +58,26 @@ val rcloneVideoThumbnailsPatch = bytecodePatch(
 
     execute {
         val thumb = MixVideoThumbnailFingerprint.method
-        var timeouts = 0
+        val list = thumb.instructions.toList()
+        // the watchdog that gives up on the thumbnail: the 10 s handed to Handler.postDelayed
+        val timeoutIndex = list.indices.firstOrNull { i ->
+            val ins = list[i]
+            ins is WideLiteralInstruction && ins.wideLiteral == OLD_TIMEOUT_MS && feedsPostDelayed(list.drop(i + 1).take(4))
+        } ?: throw PatchException("69: thumbnail timeout not found")
+        val timeoutReg = (list[timeoutIndex] as OneRegisterInstruction).registerA
+        // only the first 7 MB / 15 MB of some video types were read: read the whole file
+        // (only the ones before the watchdog; a later 15 MB is a size guess for something else)
         var limits = 0
-        thumb.instructions.withIndex().toList().forEach { (index, ins) ->
-            if (ins !is WideLiteralInstruction || ins !is OneRegisterInstruction) return@forEach
-            val reg = ins.registerA
-            when {
-                // the watchdog that gives up on the thumbnail: only the one handed to Handler.postDelayed
-                ins.wideLiteral == OLD_TIMEOUT_MS && feedsPostDelayed(thumb.instructions.drop(index + 1).take(4)) -> {
-                    thumb.replaceInstruction(index, "const-wide/32 v$reg, $NEW_TIMEOUT_MS")
-                    timeouts++
-                }
-                // only the first 7 MB / 15 MB of some video types were read: read the whole file
-                (ins.wideLiteral == 0x700000L || ins.wideLiteral == 0xf00000L) && ins.opcode == Opcode.CONST_WIDE_32 -> {
-                    thumb.replaceInstruction(index, "const-wide v$reg, 0x7fffffffffffffffL")
-                    limits++
-                }
+        for (i in 0 until timeoutIndex) {
+            val ins = list[i]
+            if (ins is WideLiteralInstruction && ins is OneRegisterInstruction && ins.opcode == Opcode.CONST_WIDE_32 &&
+                (ins.wideLiteral == 0x700000L || ins.wideLiteral == 0xf00000L)
+            ) {
+                thumb.replaceInstruction(i, "const-wide v${ins.registerA}, 0x7fffffffffffffffL")
+                limits++
             }
         }
-        if (timeouts == 0) throw PatchException("69: thumbnail timeout not found")
+        thumb.replaceInstruction(timeoutIndex, "const-wide/32 v$timeoutReg, $NEW_TIMEOUT_MS")
 
         // take the frame from ~3 s in (not 7-50 s or the middle), so a cloud file needs less data
         val grab = MixFrameGrabFingerprint.method
